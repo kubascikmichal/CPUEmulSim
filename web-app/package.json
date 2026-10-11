@@ -1,0 +1,16 @@
+{
+  "name": "cpuemulsim-web",
+  "private": true,
+  "version": "0.9.4",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "test": "npm run test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "golden:record": "tools/golden-harness/record.sh"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.48.2"
+  }
+}

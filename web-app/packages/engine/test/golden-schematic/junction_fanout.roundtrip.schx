@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Scheme ver="2.0">
+  <Gates>
+    <Gate id="g0">
+      <class>sk.uniza.fri.cp.SchematicSim.Gates.Input</class>
+      <gridX>4</gridX>
+      <gridY>4</gridY>
+      <properties>
+        <property name="pinSide" value="RIGHT" />
+        <property name="state" value="0" />
+      </properties>
+    </Gate>
+    <Gate id="g1">
+      <class>sk.uniza.fri.cp.SchematicSim.Gates.Led</class>
+      <gridX>80</gridX>
+      <gridY>4</gridY>
+      <properties>
+        <property name="color" value="#FF0000" />
+        <property name="pinSide" value="LEFT" />
+      </properties>
+    </Gate>
+    <Gate id="g2">
+      <class>sk.uniza.fri.cp.SchematicSim.Gates.Led</class>
+      <gridX>40</gridX>
+      <gridY>24</gridY>
+      <properties>
+        <property name="color" value="#FF0000" />
+        <property name="pinSide" value="TOP" />
+      </properties>
+    </Gate>
+    <Gate id="g3">
+      <class>sk.uniza.fri.cp.SchematicSim.Gates.Led</class>
+      <gridX>60</gridX>
+      <gridY>40</gridY>
+      <properties>
+        <property name="color" value="#FF0000" />
+        <property name="pinSide" value="TOP" />
+      </properties>
+    </Gate>
+  </Gates>
+  <Wires>
+    <Wire color="#000000">
+      <start>
+        <junction>
+          <x>620.0</x>
+          <y>60.0</y>
+        </junction>
+      </start>
+      <end>
+        <gateId>g1</gateId>
+        <pinIndex>0</pinIndex>
+      </end>
+    </Wire>
+    <Wire color="#000000">
+      <start>
+        <junction>
+          <x>440.0</x>
+          <y>60.0</y>
+        </junction>
+      </start>
+      <end>
+        <junction>
+          <x>420.0</x>
+          <y>60.0</y>
+        </junction>
+      </end>
+    </Wire>
+    <Wire color="#000000">
+      <start>
+        <junction>
+          <x>440.0</x>
+          <y>60.0</y>
+        </junction>
+      </start>
+      <end>
+        <junction>
+          <x>420.0</x>
+          <y>60.0</y>
+        </junction>
+      </end>
+    </Wire>
+    <Wire color="#000000">
+      <start>
+        <junction>
+          <x>420.0</x>
+          <y>60.0</y>
+        </junction>
+      </start>
+      <end>
+        <gateId>g0</gateId>
+        <pinIndex>0</pinIndex>
+      </end>
+    </Wire>
+    <Wire color="#000000">
+      <start>
+        <junction>
+          <x>420.0</x>
+          <y>60.0</y>
+        </junction>
+      </start>
+      <end>
+        <gateId>g2</gateId>
+        <pinIndex>0</pinIndex>
+      </end>
+    </Wire>
+    <Wire color="#000000">
+      <start>
+        <junction>
+          <x>620.0</x>
+          <y>60.0</y>
+        </junction>
+      </start>
+      <end>
+        <junction>
+          <x>440.0</x>
+          <y>60.0</y>
+        </junction>
+      </end>
+    </Wire>
+    <Wire color="#000000">
+      <start>
+        <junction>
+          <x>620.0</x>
+          <y>60.0</y>
+        </junction>
+      </start>
+      <end>
+        <gateId>g3</gateId>
+        <pinIndex>0</pinIndex>
+      </end>
+    </Wire>
+  </Wires>
+</Scheme>

@@ -1,0 +1,6 @@
+# E-mail addresses allowed to log in to CPU Emulator through LDAP.
+# One address per line; letter case does not matter; '#' starts a comment.
+# Used only when an LDAP server is configured (ldap.urls in the server configuration).
+# The file is re-read automatically after every change - no restart needed.
+#
+# meno.priezvisko@example.sk

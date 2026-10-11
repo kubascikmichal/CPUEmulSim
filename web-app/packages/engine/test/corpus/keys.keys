@@ -1,0 +1,4 @@
+wait char a
+wait arrow LEFT
+@7 char š
+wait enter enter

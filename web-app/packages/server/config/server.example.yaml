@@ -1,0 +1,50 @@
+# CPU Emulator web server - example configuration (all values are deployment specific).
+server:
+  host: 0.0.0.0
+  port: 8080
+  publicDir: ../web/dist
+  trustProxy: true
+
+# auth.mode: ldap (only LDAP, access by group via `authorization`) - or `local` (own accounts with
+# registration) where a filled-in `ldap` section ADDS directory logins admitted by e-mail
+# (`allowedEmailsFile`). Empty `urls` = LDAP not used.
+ldap:
+  urls: ["ldaps://dc1.example.local:636", "ldaps://dc2.example.local:636"]   # failover order
+  startTls: false
+  tls:
+    caFile: /etc/cpuemul/ldap-ca.pem
+    rejectUnauthorized: true
+  connectTimeoutMs: 5000
+  bind:
+    mode: search-then-bind            # or direct-bind (UPN = username@upnSuffix)
+    serviceDn: CN=svc-cpuemul,OU=Service,DC=example,DC=local
+    servicePasswordEnv: LDAP_SERVICE_PASSWORD
+  user:
+    baseDn: OU=Users,DC=example,DC=local
+    filter: "(&(objectClass=user)(sAMAccountName={{username}}))"
+    attributes: { username: sAMAccountName, displayName: displayName }
+    upnSuffix: example.local
+  groups:
+    nested: true                      # LDAP_MATCHING_RULE_IN_CHAIN
+    baseDn: OU=Groups,DC=example,DC=local
+  allowedEmailsFile: ldap-allowed-emails.txt   # auth.mode local only; relative to this file
+
+authorization:
+  roleMappings:
+    - group: CN=CPUEmul-Users,OU=Groups,DC=example,DC=local
+      role: user
+
+session:
+  idleTimeoutMin: 30
+  absoluteTimeoutHours: 8
+  cookieName: cpuemul.sid
+  secureCookie: true
+
+files:
+  dataDir: /data
+  maxFileBytes: 2097152
+  maxUserBytes: 104857600
+  maxUserFiles: 1000
+
+security:
+  loginRateLimit: { perIpPerMin: 10, perUserPerMin: 5 }

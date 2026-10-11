@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="sk">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/png" href="/login-assets/cpu_icon.png" />
+    <link rel="stylesheet" href="/login-assets/login.css" />
+    <title>CPU Emulator - prihlásenie</title>
+  </head>
+  <body>
+    <main>
+      <form id="login" novalidate>
+        <header><img src="/login-assets/cpu_icon.png" width="32" height="32" alt="" /><h1 id="heading">CPU Emulator</h1></header>
+        <label><span id="username-label">Používateľské meno</span><input id="username" name="username" autocomplete="username" autofocus required /></label>
+        <p id="username-hint" class="hint" hidden>3–32 znakov: písmená, číslice, bodka, podčiarkovník, pomlčka.</p>
+        <label>Heslo<input id="password" name="password" type="password" autocomplete="current-password" required /></label>
+        <label id="password2-row" hidden>Heslo znova<input id="password2" name="password2" type="password" autocomplete="new-password" /></label>
+        <p id="password-hint" class="hint" hidden>Aspoň 8 znakov.</p>
+        <p id="error" role="alert" hidden></p>
+        <button id="submit" type="submit" disabled>Prihlásiť</button>
+        <p id="switch" class="switch" hidden>
+          <span id="switch-text">Nemáte účet?</span>
+          <a href="#" id="switch-link">Zaregistrovať sa</a>
+        </p>
+      </form>
+    </main>
+    <script src="/login-assets/login.js"></script>
+  </body>
+</html>

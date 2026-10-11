@@ -1,0 +1,1 @@
+{"code":"start:  MVI A, 1\n        JMP nowhere\n        JNZ start\n        CAL missing\n","parse":{"ok":false,"exception":"InvalidCodeLinesException","errorLines":[1,3],"errors":["[2] Neplatné návestie 'nowhere'","[4] Neplatné návestie 'missing'"]},"runs":[]}

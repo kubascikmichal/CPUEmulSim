@@ -1,0 +1,21 @@
+; constant formats
+        MVI A, 0
+        MVI A, 255
+        MVI B, 0x7f
+        MVI B, 0XFF
+        MVI C, 11111111b
+        MVI C, 0377
+        MVI D, 010
+        MVI D, 09
+        MVI A, 'A'
+        MVI A, ' '
+        MXI S, 65535
+        MXI M, 0x1234
+        MXI M, 1111000011110000b
+        MXI S, 0177777
+        ADI A, 1
+        ANI A, 0x0F
+        ORI A, 'a'
+        XRI A, 0
+        SBI A, 10
+        CMI A, 3

@@ -1,0 +1,1 @@
+INT0a:  MVI A, 1

@@ -1,0 +1,42 @@
+# Local run with application accounts (register + log in), plus LDAP logins once the `ldap`
+# section below has a server. NOT for deployment as is (plain http, cookie without Secure).
+# `mode: none` skips login entirely; `mode: ldap` = LDAP only with group-based access.
+#   CPUEMUL_CONFIG=config/server.local.yaml npm start
+auth:
+  mode: local
+  allowRegistration: true
+
+server:
+  host: 127.0.0.1
+  port: 8000
+  publicDir: ../web/dist
+  trustProxy: false
+
+session:
+  secureCookie: false
+
+files:
+  dataDir: ./data
+
+# LDAP / Active Directory. Leave `urls` empty (or delete the section) = LDAP is not used and only
+# local accounts can log in. With a server filled in, users can ALSO log in with their LDAP
+# account; they are admitted only if their e-mail (attribute `mail`) is listed in
+# `allowedEmailsFile` (relative to this file; edits take effect without a restart).
+# The service account password comes from the environment variable named in servicePasswordEnv.
+ldap:
+  urls: []                     # e.g. ["ldaps://dc1.example.local:636", "ldaps://dc2.example.local:636"]
+  startTls: false              # true for ldap:// + StartTLS
+  tls:
+    caFile:                    # e.g. /etc/cpuemul/ldap-ca.pem (CA of the directory's certificate)
+    rejectUnauthorized: true
+  bind:
+    mode: search-then-bind     # or direct-bind (UPN = username@upnSuffix)
+    serviceDn:                 # e.g. CN=svc-cpuemul,OU=Service,DC=example,DC=local
+    servicePasswordEnv: LDAP_SERVICE_PASSWORD
+  user:
+    baseDn:                    # e.g. OU=Users,DC=example,DC=local
+    # log in with the account name or the e-mail address
+    filter: "(&(objectClass=user)(|(sAMAccountName={{username}})(mail={{username}})))"
+    attributes: { username: sAMAccountName, displayName: displayName, mail: mail }
+    upnSuffix:                 # direct-bind only, e.g. example.local
+  allowedEmailsFile: ldap-allowed-emails.txt

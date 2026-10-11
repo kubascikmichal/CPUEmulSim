@@ -1,0 +1,1 @@
+{"code":"int0f:  MVI A, 1\nint15:  MVI A, 2\n","parse":{"ok":false,"exception":"InvalidCodeLinesException","errorLines":[1],"errors":["[2] Návestie pre prerušenie int15 už existuje"]},"runs":[]}
