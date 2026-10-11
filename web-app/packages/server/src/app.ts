@@ -31,6 +31,8 @@ export interface AppOptions {
 }
 
 const CSRF_HEADER = 'x-requested-with';
+/** Oversized uploads up to this size are read to the end before the 413 (see rejectOversizedUpload). */
+const MAX_DRAIN_BYTES = 64 * 1024 * 1024;
 const CSRF_VALUE = 'cpuemul';
 
 declare module 'fastify' {
@@ -228,7 +230,27 @@ export async function buildApp({ config, authenticator, registrar, now = Date.no
     }
   });
 
-  app.put('/api/files/:name', { preHandler: requireApiSession }, async (req, reply) => {
+  /**
+   * An upload larger than the per-file limit (by Content-Length) is drained before the 413 is sent.
+   * Rejecting mid-body closes the connection, which reverse proxies that stream request bodies
+   * (Apache mod_proxy - it does not apply LimitRequestBody to proxied requests) turn into a 502.
+   * Absurd sizes are cut off at once.
+   */
+  const rejectOversizedUpload = async (req: FastifyRequest, reply: FastifyReply) => {
+    const length = Number(req.headers['content-length']);
+    if (!Number.isFinite(length) || length <= config.files.maxFileBytes) return;
+    if (length <= MAX_DRAIN_BYTES) {
+      await new Promise<void>((resolveDrain) => {
+        req.raw.on('end', () => resolveDrain());
+        req.raw.on('error', () => resolveDrain());
+        req.raw.on('close', () => resolveDrain());
+        req.raw.resume();
+      });
+    }
+    return reply.code(413).send({ error: 'quota_exceeded' });
+  };
+
+  app.put('/api/files/:name', { onRequest: rejectOversizedUpload, preHandler: requireApiSession }, async (req, reply) => {
     sessions.touch(req.session!.id);
     const body = Buffer.isBuffer(req.body) ? req.body : Buffer.from(String(req.body ?? ''), 'utf8');
     try {

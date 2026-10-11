@@ -1,9 +1,9 @@
 # Deploying the CPU Emulator web application on a server
 
-This guide installs the web version on one Linux server (Ubuntu/Debian or Fedora/RHEL) behind nginx with HTTPS:
+This guide installs the web version on one Linux server (Ubuntu/Debian or Fedora/RHEL) behind a web server with HTTPS, either **nginx** ([step 5](#5-nginx-and-https)) or **Apache 2** ([step 5b](#5b-apache-2-and-https)):
 
 ```
-browser ──HTTPS──► nginx :443 ──HTTP──► node (cpuemul.service) 127.0.0.1:8080 ──LDAPS──► AD (optional)
+browser ──HTTPS──► nginx or Apache :443 ──HTTP──► node (cpuemul.service) 127.0.0.1:8080 ──LDAPS──► AD (optional)
                                               │
                                               └── /var/lib/cpuemul  (accounts + user files)
 ```
@@ -17,8 +17,11 @@ Ready-made files are in [`web-app/deploy/`](../web-app/deploy):
 | [`ldap-allowed-emails.txt`](../web-app/deploy/ldap-allowed-emails.txt) | `/etc/cpuemul/ldap-allowed-emails.txt` |
 | [`cpuemul.service`](../web-app/deploy/cpuemul.service) | `/etc/systemd/system/cpuemul.service` |
 | [`nginx-cpuemul.conf`](../web-app/deploy/nginx-cpuemul.conf) | `/etc/nginx/sites-available/cpuemul` or `/etc/nginx/conf.d/cpuemul.conf` |
+| [`apache2-cpuemul.conf`](../web-app/deploy/apache2-cpuemul.conf) | `/etc/apache2/sites-available/cpuemul.conf` or `/etc/httpd/conf.d/cpuemul.conf` (instead of nginx) |
 
 The examples use the domain `cpuemul.example.sk`; replace it everywhere.
+
+A short Debian-only walkthrough of creating the systemd service is in [`web-app/deploy/README.md`](../web-app/deploy/README.md).
 
 ## 1. Prerequisites
 
@@ -30,7 +33,7 @@ The examples use the domain `cpuemul.example.sk`; replace it everywhere.
   sudo dnf install -y nodejs22   # or: dnf module install nodejs:22
   node -v                        # must print v22.x
   ```
-- **nginx**, **git**, and **certbot** for the TLS certificate.
+- **nginx** or **Apache 2**, **git**, and **certbot** for the TLS certificate.
 - A DNS record pointing `cpuemul.example.sk` to the server; ports 80 and 443 open.
 
 ## 2. Service user, directories, code
@@ -101,6 +104,56 @@ If the certificate does not exist yet, `nginx -t` fails on the `ssl_certificate`
 
 Open `https://YOUR.DOMAIN/`. You should land on the login page, with `Zaregistrovať sa` below the form.
 
+## 5b. Apache 2 and HTTPS
+
+Use this instead of step 5 if the server runs Apache. The app service from step 4 is the same; Apache only terminates TLS and proxies to `127.0.0.1:8080`.
+
+**Debian/Ubuntu** (package and service `apache2`):
+
+```bash
+sudo apt-get install -y apache2
+sudo a2enmod proxy proxy_http ssl headers rewrite
+sudo install -m 0644 /opt/cpuemul/web-app/deploy/apache2-cpuemul.conf /etc/apache2/sites-available/cpuemul.conf
+sudo sed -i 's/cpuemul.example.sk/YOUR.DOMAIN/g' /etc/apache2/sites-available/cpuemul.conf
+sudo a2ensite cpuemul
+sudo a2dissite 000-default            # optional: the default site would answer for unknown host names
+sudo systemctl enable --now apache2
+```
+
+**Fedora/RHEL** (package and service `httpd`; proxy, headers and rewrite modules are loaded by default):
+
+```bash
+sudo dnf install -y httpd mod_ssl
+sudo install -m 0644 /opt/cpuemul/web-app/deploy/apache2-cpuemul.conf /etc/httpd/conf.d/cpuemul.conf
+sudo sed -i -e 's/cpuemul.example.sk/YOUR.DOMAIN/g' \
+            -e 's#${APACHE_LOG_DIR}/#logs/#' /etc/httpd/conf.d/cpuemul.conf   # APACHE_LOG_DIR is Debian-only
+sudo setsebool -P httpd_can_network_connect 1   # SELinux: allow Apache → 127.0.0.1:8080
+sudo systemctl enable --now httpd
+```
+
+**Certificate** (both). The port-80 virtual host serves certbot's HTTP challenge from `/var/www/letsencrypt`:
+
+```bash
+sudo install -d /var/www/letsencrypt
+sudo certbot certonly --webroot -w /var/www/letsencrypt -d YOUR.DOMAIN
+sudo apachectl configtest && sudo systemctl reload apache2   # Fedora: reload httpd
+```
+
+If the certificate does not exist yet, `configtest` fails on the `SSLCertificateFile` lines. Comment out the `<VirtualHost *:443>` block, reload Apache, run certbot, then restore the block and reload again.
+
+Managing the two services:
+
+| Task | App | Apache (Debian / Fedora) |
+|---|---|---|
+| Status | `systemctl status cpuemul` | `systemctl status apache2` / `httpd` |
+| Restart after config change | `sudo systemctl restart cpuemul` | `sudo systemctl reload apache2` / `httpd` |
+| Logs | `journalctl -u cpuemul -f` | `/var/log/apache2/cpuemul-error.log` / `/var/log/httpd/cpuemul-error.log` |
+| Start at boot | `sudo systemctl enable cpuemul` | `sudo systemctl enable apache2` / `httpd` |
+
+Notes:
+- `ProxyPreserveHost` and `RequestHeader set X-Forwarded-Proto "https"` pass the original host and scheme to the app; mod_proxy adds `X-Forwarded-For`, which the app uses for rate limiting (`trustProxy: true`).
+- Upload size is limited by the app (`files.maxFileBytes`, 413 `prekročený limit úložiska`). Apache 2.4 does not apply `LimitRequestBody` to proxied request bodies, so it is not set in the site.
+
 ## 6. Check it works
 
 1. Register an account, write a program, save it with `Súbor → Uložiť ako...`.
@@ -150,8 +203,10 @@ sudo tar -czf /root/cpuemul-$(date +%F).tgz /var/lib/cpuemul /etc/cpuemul
 | Symptom | Cause / fix |
 |---|---|
 | `journalctl` shows a configuration error at startup | The server validates the YAML; the message names the field (e.g. `ldap.bind.serviceDn is required`). |
-| Browser shows `502 Bad Gateway` | nginx cannot reach the app: `systemctl status cpuemul`; on SELinux systems `setsebool -P httpd_can_network_connect 1`. |
+| Browser shows `502 Bad Gateway` / `503 Service Unavailable` | The web server cannot reach the app: `systemctl status cpuemul`; on SELinux systems `setsebool -P httpd_can_network_connect 1`. Apache: check that `proxy` and `proxy_http` are enabled (`apachectl -M`). |
+| Apache: `Invalid command 'SSLEngine'` | mod_ssl missing: `a2enmod ssl` (Debian) or `dnf install mod_ssl` (Fedora). |
+| Apache: `Invalid command 'RequestHeader'` / `'RewriteEngine'` | `a2enmod headers rewrite` (Debian). |
 | Login succeeds, but you land on the login page again | The browser drops the `Secure` session cookie on plain HTTP - use HTTPS (or `secureCookie: false` for a test without TLS). |
 | `Adresárová služba nie je dostupná` for LDAP users | The DCs are unreachable, or the certificate is not trusted (`tls.caFile`). Local accounts still work. |
 | LDAP user gets `Nemáte oprávnenie na použitie aplikácie.` | Their `mail` attribute is missing or not in `ldap-allowed-emails.txt`. |
-| `413` / `Súbor sa nepodarilo uložiť: prekročený limit úložiska.` | Per-file or per-user quota (`files.*` in the config); nginx `client_max_body_size` must be larger than `maxFileBytes`. |
+| `413` / `Súbor sa nepodarilo uložiť: prekročený limit úložiska.` | Per-file or per-user quota (`files.*` in the config). With nginx, `client_max_body_size` must be larger than `maxFileBytes`. |

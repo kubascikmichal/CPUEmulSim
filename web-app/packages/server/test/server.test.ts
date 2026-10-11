@@ -308,7 +308,10 @@ describe('account file store (FS)', () => {
   });
 
   test('FS10 quota: file size, total bytes and file count → 413', async () => {
-    expect((await put('big.asm', 'x'.repeat(1001))).statusCode).toBe(413);
+    const big = await put('big.asm', 'x'.repeat(1001));
+    expect(big.statusCode).toBe(413);
+    // the body is drained first (proxies get a clean answer) and the reason is the app's own code
+    expect(big.json()).toEqual({ error: 'quota_exceeded' });
     await put('a.asm', 'x'.repeat(1000));
     await put('b.asm', 'x'.repeat(1000));
     expect((await put('c.asm', 'x'.repeat(600))).statusCode).toBe(413);
