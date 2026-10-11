@@ -2,3 +2,8 @@ node_modules/
 dist/
 *.tsbuildinfo
 packages/server/data/
+e2e/.results/
+test-results/
+tools/golden-harness/out/
+tools/golden-harness/lib/
+tools/golden-harness/record.stderr.log

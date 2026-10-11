@@ -11,6 +11,7 @@ Functional migration of the JavaFX desktop application to a web application with
 | 3 — Migration design | [03-migration-design.md](03-migration-design.md) | Done; D1–D4 and D6–D10 approved 2026-10-09; **D5 (LDAP connection details) open** |
 | 4 — Implementation | `web-app/` | Ported to 0.9.4; engine golden tests (CPU + 8 schematic scenarios) green against Java 0.9.4. LDAP can be switched off for local runs (`auth.mode: none`) |
 | 5 — Verification | [04-test-plan.md](04-test-plan.md) defines the checklists; results are recorded per row | Plan done |
+| Deployment | [../deployment.md](../deployment.md) - server setup (systemd + nginx + HTTPS, optional LDAP); files in `web-app/deploy/` | Example ready |
 
 Key findings:
 

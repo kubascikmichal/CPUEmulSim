@@ -1,0 +1,33 @@
+# systemd unit for the CPU Emulator web server.
+# Install: cp cpuemul.service /etc/systemd/system/ && systemctl daemon-reload && systemctl enable --now cpuemul
+[Unit]
+Description=CPU Emulator web application
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=cpuemul
+Group=cpuemul
+WorkingDirectory=/opt/cpuemul/web-app/packages/server
+EnvironmentFile=/etc/cpuemul/cpuemul.env
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node --experimental-transform-types --no-warnings src/main.ts
+Restart=on-failure
+RestartSec=5
+
+# hardening: the app only writes its data directory
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/cpuemul
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

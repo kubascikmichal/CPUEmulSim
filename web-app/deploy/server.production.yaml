@@ -1,0 +1,50 @@
+# CPU Emulator - production server configuration (example).
+# Install as /etc/cpuemul/server.yaml (readable by the service user, not world-readable).
+# All paths are absolute: publicDir/dataDir are resolved against the working directory,
+# allowedEmailsFile against this file's directory.
+
+auth:
+  mode: local               # own accounts (+ LDAP below once `ldap.urls` is filled in)
+  allowRegistration: true   # false = only existing accounts / LDAP users can log in
+
+server:
+  host: 127.0.0.1           # only nginx (on the same machine) talks to the app
+  port: 8080
+  publicDir: /opt/cpuemul/web-app/packages/web/dist
+  trustProxy: true          # client IPs from nginx's X-Forwarded-For (rate limiting, audit log)
+
+session:
+  idleTimeoutMin: 30
+  absoluteTimeoutHours: 8
+  cookieName: cpuemul.sid
+  secureCookie: true        # the site is served over HTTPS only
+
+files:
+  dataDir: /var/lib/cpuemul # accounts.json + users/<name>/files/ - back this up
+  maxFileBytes: 2097152     # 2 MB per file
+  maxUserBytes: 104857600   # 100 MB per user
+  maxUserFiles: 1000
+
+security:
+  loginRateLimit: { perIpPerMin: 10, perUserPerMin: 5 }
+
+# LDAP / Active Directory: empty `urls` = not used. Fill in to let directory users log in too;
+# they are admitted only if their e-mail is listed in allowedEmailsFile (re-read on change).
+# The service account password is NOT here - it comes from LDAP_SERVICE_PASSWORD in
+# /etc/cpuemul/cpuemul.env.
+ldap:
+  urls: []                  # e.g. ["ldaps://dc1.example.local:636", "ldaps://dc2.example.local:636"]
+  startTls: false           # true for ldap:// URLs upgraded with StartTLS
+  tls:
+    caFile:                 # e.g. /etc/cpuemul/ldap-ca.pem (CA that signed the DC certificates)
+    rejectUnauthorized: true
+  connectTimeoutMs: 5000
+  bind:
+    mode: search-then-bind
+    serviceDn:              # e.g. CN=svc-cpuemul,OU=Service,DC=example,DC=local
+    servicePasswordEnv: LDAP_SERVICE_PASSWORD
+  user:
+    baseDn:                 # e.g. OU=Users,DC=example,DC=local
+    filter: "(&(objectClass=user)(|(sAMAccountName={{username}})(mail={{username}})))"
+    attributes: { username: sAMAccountName, displayName: displayName, mail: mail }
+  allowedEmailsFile: /etc/cpuemul/ldap-allowed-emails.txt
