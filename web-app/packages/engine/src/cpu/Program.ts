@@ -98,6 +98,11 @@ export class Program {
     return this.memory[address];
   }
 
+  /** Address of the given instruction object, or -1. */
+  indexOfInstruction(instruction: Instruction): number {
+    return this.instructions.indexOf(instruction);
+  }
+
   getInstruction(address: number): Instruction | null {
     return address >= 0 && address < this.instructions.length ? this.instructions[address] : null;
   }

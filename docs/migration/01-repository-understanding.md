@@ -79,7 +79,7 @@ CPU↔simulation coupling: bus property listeners (`DataBus8`, `AddressBus16`, `
   - move/IO: `#348038`, bold
   - branch: `#144e80`, bold
   - special: `#638000`, bold
-  - labels `[a-zA-Z0-9]+:`: `#804000`, bold
+  - labels `\w+:` at the line start (same rule as the parser; was `[a-zA-Z0-9]+:` anywhere): `#804000`, bold
   - comments `;.*`: cadetblue
 - Caret line background `#f2f9fc`; executing line `#caffca`; error line `#ffb1ae`; breakpoint line `#ff8331`.
 - Breakpoints: click the gutter to toggle a red dot. Clicking a non-instruction line places the breakpoint on the **next** instruction line (`Parser.isInstrucionLine`). Breakpoints follow line insertions and deletions. **UnBreak All** clears them.
@@ -95,7 +95,7 @@ CPU↔simulation coupling: bus property listeners (`DataBus8`, `AddressBus16`, `
 - Constants:
   - byte: decimal 0–255, hex `0x..`, binary `...b`, octal with a leading `0`, char `'c'`
   - short: decimal 0–65535, hex, binary up to 16 bits, octal
-- Interrupt labels: `int00`–`int15` decimal, or `int0a`–`int0f` hex. Duplicate interrupt label is an error. Labels starting with `int` in any other form are ordinary labels.
+- Interrupt labels: `int00`–`int15` or `INT00`–`INT15`, decimal. Duplicate interrupt label is an error. Since 2026-10-12, any other label starting with `int` (any case) is a parse error; before, `int0a`–`int0f` were hex interrupt labels and other `int…` labels were ordinary labels.
 - `BYTE k` appends to program memory (constants) and does not emit an instruction.
 - Labels resolve to **instruction indices**. PC addresses instructions, not bytes.
 - Error message format: `[<line>] <message>`. Messages are Slovak, verbatim:
@@ -466,27 +466,27 @@ Consequence for the migration: LDAP authentication is **purely additive**. It ga
 | R13 | **Existing defects** (below) | Preserve them or fix them? | Default: preserve exactly (parity rule); each listed for explicit decision D8. #1 is fixed upstream in 0.9.4; #17–#19 are new in 0.9.4 |
 | R14 | **Rewrite volume**: about 17k lines, most of it engine and editor logic | Schedule and regression risk | Port the engine first, as headless TypeScript with golden tests; then the UI |
 
-### Existing defects and quirks found (preserved by default)
+### Existing defects and quirks found (preserved by default; struck-through items are fixed)
 
 These affect "identical behaviour". Each needs a keep or fix decision (D8 in the design doc).
 
 1. ~~**Hardware interrupts cannot be triggered from the schematic.**~~ **Fixed in 0.9.4** (`4bfa6c8`): `IT` is an input tap, `ControlBus.simulate()` writes the circuit's value to the bus, and `int00..int15` handlers run.
-2. **`PUS F` / `POP F` pass the parser but stop execution at runtime.** `getRegisterVal("F")` throws, and the CPU silently returns to Idle.
-3. **Labels resolve only when at least one label is defined.** In a program with no labels, `JMP 5` jumps to instruction 5, and `JMP x` stops execution at runtime.
+2. ~~**`PUS F` / `POP F` pass the parser but stop execution at runtime.**~~ `getRegisterVal("F")` throws, and the CPU silently returns to Idle. **Fixed: F is a flag byte (bit0 = CY, bit1 = Z, bit2 = IE); `POP F` restores all three. Any other runtime failure is now printed to the console instead of stopping silently.** (2026-10-12, web app and Java)
+3. ~~**Labels resolve only when at least one label is defined.**~~ In a program with no labels, `JMP 5` jumps to instruction 5, and `JMP x` stops execution at runtime. **Fixed: labels are always resolved; a jump/call operand must be a defined label (`JMP 5` works only with a label `5:`).** (2026-10-12, web app and Java)
 4. **A `BYTE` line maps to the previous instruction index** in the line↔instruction map. A breakpoint there, which is only possible on a mixed line, breaks on the preceding instruction.
-5. **Interrupt label `INT0a`** (uppercase `INT`, lowercase hex digit) makes the parser throw an uncaught `NumberFormatException`. The status stays at `Parsujem...` and no error is listed. Related behaviour confirmed by golden recording:
+5. ~~**Interrupt label `INT0a`**~~ (uppercase `INT`, lowercase hex digit) makes the parser throw an uncaught `NumberFormatException`. The status stays at `Parsujem...` and no error is listed. Related behaviour confirmed by golden recording: **Fixed: only `int00`–`int15` / `INT00`–`INT15` (decimal) are interrupt labels; any other label starting with `int` (any case) is a parse error. Unexpected parser failures are reported as errors instead of hanging at `Parsujem...`.** (2026-10-12, web app and Java)
    - `INT0A` (uppercase hex digit) is silently an *ordinary* label.
    - `int0f` and `int15` are the same interrupt 15, so defining both gives `Návestie pre prerušenie int15 už existuje`.
-6. **More than 256 `BYTE` constants** overflow the 256-row `Konštanty` table (`IndexOutOfBoundsException` during refresh).
+6. ~~**More than 256 `BYTE` constants**~~ overflow the 256-row `Konštanty` table (`IndexOutOfBoundsException` during refresh). **Fixed: the 257th constant is a parse error `Príliš veľa konštánt BYTE (max. 256)`.** (2026-10-12, web app and Java)
 7. **`Koniec` cancels the CPU thread before the unsaved prompts.** If the user then cancels, a new CPU thread is created on the next run, but the schematic's CPU buttons stay bound to the old thread's state.
 8. **The 16-bit ASCII display** uses `value >> 4` instead of `>> 8` for the high character.
-9. **`ConsoleOutputStream.write(byte[])` drops the last byte.** It is only visible on the bus warning, whose last character is a space.
-10. **Register text fields are editable but inert.** CY is read-only; Z and IE are editable but ignored.
-11. **The LED colour menu always pre-selects `Červená`**, regardless of the actual colour.
-12. **Wire colour can only be changed through file content.** The 0.9.2 dead `ColorPicker` pane is gone in 0.9.4; the `color` attribute is still saved and loaded.
+9. ~~**`ConsoleOutputStream.write(byte[])` drops the last byte.**~~ It is only visible on the bus warning, whose last character is a space. **Fixed (also `write(byte[], off, len)` bounds in Java).** (2026-10-12, web app and Java)
+10. ~~**Register text fields are editable but inert.**~~ CY is read-only; Z and IE are editable but ignored. **Fixed: all register and flag fields are read-only.** (2026-10-12, web app and Java)
+11. ~~**The LED colour menu always pre-selects `Červená`**~~, regardless of the actual colour. **Fixed: the menu checks the LED's actual colour (and pin side).** (2026-10-12, web app and Java)
+12. ~~**Wire colour can only be changed through file content.**~~ The 0.9.2 dead `ColorPicker` pane is gone in 0.9.4; the `color` attribute is still saved and loaded. **Fixed: wire context menu `Farba vodiča` (Čierna, Červená, Zelená, Modrá, Žltá, Oranžová, Šedá) colours the whole wire - all segments joined through bends - or all selected wires.** (2026-10-12, web app and Java)
 13. **Version strings:** 0.9.4 aligned `App.PROGRAM_VERSION` and the POM (`0.9.4`), but the README still names `CPUEmulSim-1.6.0-jar-with-dependencies.jar` (the build produces `target/CPUEmulSim.jar`).
-14. **Comment stripping ignores quotes**, so `MVI A, ';'` is a parse error.
-15. **Editor highlighting accepts labels `[a-zA-Z0-9]+:`**, while the parser accepts `\w+:`. Labels with `_` parse but are not highlighted.
+14. ~~**Comment stripping ignores quotes**~~, so `MVI A, ';'` is a parse error. **Fixed: `;` inside `'…'` or `"…"` does not start a comment (parser, breakpoint lines, highlighting).** (2026-10-12, web app and Java)
+15. ~~**Editor highlighting accepts labels `[a-zA-Z0-9]+:`**~~, while the parser accepts `\w+:`. Labels with `_` parse but are not highlighted. **Fixed: highlighting uses the parser's rule (`\w+:` at the line start).** (2026-10-12, web app and Java)
 16. **Reloading a `.schx` can short separate nets together** (still present in 0.9.4, wider reach). Found by golden recording (`logic_gates` scenario). `SchemeLoader` shares one junction hub per rounded coordinate (`hubByKey`). Branches of *different* nets whose junctions land on the same grid point are therefore merged on load; in the scenario, three independent switch outputs end up on one net. Saving after such a load writes the merged structure, so load→save is not idempotent for these files. A shorted net then takes `Math.random()` values. Because the original simulates gates in `HashSet` (identity-hash) order, the resulting values differ between JVM runs.
 
    **0.9.4:** the loader shares one hub per rounded point (`hubByKey`) *and* splits any already-loaded wire passing within half a grid cell of a junction end. Nets whose wires overlap or touch a foreign junction point are merged on load. The 0.9.4 bend placement (corner at the target pin's x) makes overlapping wires common when several nets run to pins in one column. Found while recording the golden scenarios: the first 0.9.4 `logic_gates` layout shorted its inputs and the Java simulator ran out of memory. The scenarios were rebuilt so that no two nets share a point.

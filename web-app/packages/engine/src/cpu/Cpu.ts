@@ -94,6 +94,8 @@ export class Cpu {
 
   /** Called when an interrupt label is missing (Java shows an Alert via Platform.runLater). */
   onInterruptLabelError: ((message: string) => void) | null = null;
+  /** Any other failure while executing an instruction (the program stops; the original was silent). */
+  onRuntimeError: ((message: string) => void) | null = null;
 
   constructor(
     private readonly console: ConsoleStream,
@@ -245,6 +247,7 @@ export class Cpu {
           this.fIntLevelOld = it;
         } catch (e) {
           if (e instanceof NonExistingInterruptLabelException) this.onInterruptLabelError?.(e.message);
+          else this.onRuntimeError?.(this.describeRuntimeError(nextInstruction, e));
           this.isExecuting = false;
         }
         yield TICK;
@@ -252,6 +255,13 @@ export class Cpu {
       this.isExecuting = false;
     }
     // System.out.println("CPU koniec")
+  }
+
+  private describeRuntimeError(instruction: Instruction, e: unknown): string {
+    const line = this.program?.getLineOfInstruction(this.program.indexOfInstruction(instruction)) ?? -1;
+    const where = line >= 0 ? '[' + (line + 1) + '] ' : '';
+    const detail = e instanceof Error ? e.message : String(e);
+    return where + "Chyba pri vykonávaní inštrukcie '" + instruction.type + "': " + detail;
   }
 
   /** `program.getInstruction(Short.toUnsignedInt(regPC++))` */
@@ -596,10 +606,12 @@ export class Cpu {
         break;
       case 'PUS':
         if (/^M$/i.test(p1)) this.pushShort(toShort(this.getRegisterVal(p1)));
+        else if (/^F$/i.test(p1)) this.pushByte(toByte(this.getFlagsByte()));
         else this.pushByte(toByte(this.getRegisterVal(p1)));
         break;
       case 'POP':
         if (/^M$/i.test(p1)) this.setRegisterVal(p1, this.popShort());
+        else if (/^F$/i.test(p1)) this.setFlagsByte(this.pop());
         else this.setRegisterVal(p1, this.pop());
         break;
       case 'STR':
@@ -749,6 +761,17 @@ export class Cpu {
       case 'PC': this.regPC = toShort(value); break;
       default: throw new InvalidParameterException('Neplatny register');
     }
+  }
+
+  /** Register F for `PUS F` / `POP F`: bit0 = CY, bit1 = Z, bit2 = IE, other bits 0. */
+  private getFlagsByte(): number {
+    return (this.flagCY ? 1 : 0) | (this.flagZ ? 2 : 0) | (this.flagIE ? 4 : 0);
+  }
+
+  private setFlagsByte(value: number): void {
+    this.flagCY = (value & 1) !== 0;
+    this.flagZ = (value & 2) !== 0;
+    this.flagIE = (value & 4) !== 0;
   }
 
   private pushByte(value: number): void {

@@ -52,8 +52,7 @@ export class MemoryTables {
 
   /**
    * `updateGUI()` (registers + all tables), or only `updateGUITableProgMemory()` with programOnly.
-   * Original quirk: more than 256 BYTE constants throw IndexOutOfBounds - the remaining rows are
-   * then not updated (the exception is reported).
+   * The parser rejects more than 256 BYTE constants, so the Konštanty table cannot overflow.
    */
   update(cpu: Cpu | null, program: Program | null, opts: { programOnly?: boolean } = {}): void {
     if (!opts.programOnly) {
@@ -104,14 +103,9 @@ export class MemoryTables {
   private updateProgMemory(program: Program | null): void {
     if (program !== null) {
       const mem = program.getMemory();
-      for (let i = 0; i < mem.length; i++) {
-        if (i >= 256) {
-          console.error(new RangeError(`IndexOutOfBoundsException: Index: ${i}, Size: 256`));
-          return;
-        }
-        this.progMemory.set(i, mem[i]);
-      }
-      for (let i = mem.length; i < 256; i++) this.progMemory.set(i, 0);
+      const n = Math.min(mem.length, 256);
+      for (let i = 0; i < n; i++) this.progMemory.set(i, mem[i]);
+      for (let i = n; i < 256; i++) this.progMemory.set(i, 0);
     } else {
       for (let i = 0; i < 256; i++) this.progMemory.set(i, 0);
     }

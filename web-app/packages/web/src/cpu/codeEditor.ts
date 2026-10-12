@@ -2,7 +2,7 @@
  * CodeMirror 6 setup replacing the RichTextFX `CodeArea` of the original
  * (CodeEditorFactory + BreakpointFactory + RichTextFXHelpers + CPUEmul_style.css).
  */
-import { isInstructionLine } from '@cpuemul/engine';
+import { isInstructionLine, stripComments } from '@cpuemul/engine';
 import { history, historyKeymap, insertNewline, insertTab, standardKeymap } from '@codemirror/commands';
 import { Compartment, EditorState, RangeSet, RangeSetBuilder, StateEffect, StateField, type Extension } from '@codemirror/state';
 import {
@@ -28,11 +28,14 @@ const KEYWORDS_BRANCH = ['JMP', 'JZR', 'JNZ', 'JCY', 'JNC', 'CAL', 'CZR', 'CNZ',
 const KEYWORDS_SPECIAL = ['EIT', 'DIT', 'SCALL', 'BYTE'];
 
 const kw = (words: string[]) => `\\b(?:${words.join('|')})\\b`;
-/** Same alternation order as the original pattern (keywords before labels before comments). */
-const PATTERN = new RegExp(
-  `(${kw(KEYWORDS_ARITHMETIC_AND_LOGIC)})|(${kw(KEYWORDS_SHIFT_AND_ROTATE)})|(${kw(KEYWORDS_MOVE)})|(${kw(KEYWORDS_BRANCH)})|(${kw(KEYWORDS_SPECIAL)})|([a-zA-Z0-9]+:)|(;.*)`,
+const KEYWORD_PATTERN = new RegExp(
+  `(${kw(KEYWORDS_ARITHMETIC_AND_LOGIC)})|(${kw(KEYWORDS_SHIFT_AND_ROTATE)})|(${kw(KEYWORDS_MOVE)})|(${kw(KEYWORDS_BRANCH)})|(${kw(KEYWORDS_SPECIAL)})`,
   'gi',
 );
+/** Same label rule as the parser: `\w+:` at the start of the line. */
+const LABEL_PATTERN = /^\s*(\w+:)/;
+const LABEL_MARK = 5;
+const COMMENT_MARK = 6;
 const CLASSES = ['cm-kw-arith', 'cm-kw-shift', 'cm-kw-move', 'cm-kw-branch', 'cm-kw-special', 'cm-asm-label', 'cm-asm-comment'];
 const MARKS = CLASSES.map((c) => Decoration.mark({ class: c }));
 
@@ -42,16 +45,21 @@ function highlight(view: EditorView): DecorationSet {
     let pos = from;
     while (pos <= to) {
       const line = view.state.doc.lineAt(pos);
-      PATTERN.lastIndex = 0;
+      // the parser's comment rule: `;` inside quotes is not a comment
+      const code = stripComments(line.text);
+      let start = 0;
+      const label = LABEL_PATTERN.exec(code);
+      if (label !== null) {
+        start = label[0].length;
+        builder.add(line.from + start - label[1].length, line.from + start, MARKS[LABEL_MARK]);
+      }
+      KEYWORD_PATTERN.lastIndex = start;
       let m: RegExpExecArray | null;
-      while ((m = PATTERN.exec(line.text)) !== null) {
-        if (m[0].length === 0) {
-          PATTERN.lastIndex++;
-          continue;
-        }
+      while ((m = KEYWORD_PATTERN.exec(code)) !== null) {
         const group = m.findIndex((g, i) => i > 0 && g !== undefined) - 1;
         builder.add(line.from + m.index, line.from + m.index + m[0].length, MARKS[group]);
       }
+      if (code.length < line.text.length) builder.add(line.from + code.length, line.to, MARKS[COMMENT_MARK]);
       pos = line.to + 1;
     }
   }

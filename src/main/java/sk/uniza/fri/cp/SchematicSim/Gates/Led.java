@@ -53,6 +53,8 @@ public class Led extends GateSymbol {
     private Pin pinIn;
     private Circle light;
     private ContextMenu contextMenu;
+    private ToggleGroup colorGroup;
+    private ToggleGroup placementGroup;
 
     private volatile boolean on = false;
     private boolean wasHigh = false;
@@ -122,28 +124,38 @@ public class Led extends GateSymbol {
     private void showMenu(double screenX, double screenY) {
         if (contextMenu == null) {
             Menu placement = new Menu("Vývod");
-            ToggleGroup placementGroup = new ToggleGroup();
+            placementGroup = new ToggleGroup();
             placement.getItems().add(placementItem("vpravo", Side.RIGHT, placementGroup));
             placement.getItems().add(placementItem("vľavo", Side.LEFT, placementGroup));
             placement.getItems().add(placementItem("hore", Side.TOP, placementGroup));
             placement.getItems().add(placementItem("dole", Side.BOTTOM, placementGroup));
 
             Menu colorMenu = new Menu("Farba LED");
-            ToggleGroup colorGroup = new ToggleGroup();
-            RadioMenuItem firstColor = null;
+            colorGroup = new ToggleGroup();
             for (Map.Entry<String, Color> entry : LED_COLORS.entrySet()) {
                 RadioMenuItem item = new RadioMenuItem(entry.getKey());
                 item.setToggleGroup(colorGroup);
                 item.setUserData(entry.getValue());
                 item.setOnAction(e -> setColor((Color) item.getUserData()));
                 colorMenu.getItems().add(item);
-                if (firstColor == null) firstColor = item;
             }
-            if (firstColor != null) firstColor.setSelected(true);
 
             contextMenu = new ContextMenu(placement, new SeparatorMenuItem(), colorMenu);
         }
+        //zaskrtnuta je skutocna farba a strana vyvodu LED (ziadna farba, ak nie je v zozname)
+        selectByUserData(colorGroup, ledColor);
+        selectByUserData(placementGroup, pinIn.getExitSide());
         contextMenu.show(light, screenX, screenY);
+    }
+
+    private static void selectByUserData(ToggleGroup group, Object value) {
+        group.selectToggle(null);
+        for (javafx.scene.control.Toggle toggle : group.getToggles()) {
+            if (value.equals(toggle.getUserData())) {
+                group.selectToggle(toggle);
+                return;
+            }
+        }
     }
 
     private RadioMenuItem placementItem(String label, Side side, ToggleGroup group) {

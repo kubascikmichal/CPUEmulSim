@@ -13,7 +13,7 @@ import { GateBody } from './symbols';
 
 const {
   Pin, Wire, WireEnd, MultiInputGate, Led, Input, PushButton, MatrixKeyboard, SevenSegmentDisplay, Register8, Ram8k,
-  RailBus, Side, Point2D, javaRound,
+  RailBus, Side, Point2D, javaRound, WIRE_COLOR_CHOICES,
 } = schematic;
 type Sheet = schematic.SchematicSheet;
 type GateT = schematic.GateSymbol;
@@ -54,9 +54,6 @@ interface MenuEntry {
   submenu?: MenuEntry[];
   action?: () => void;
 }
-
-/** Per-gate menu radio state (the JavaFX ToggleGroups live as long as the gate). */
-const menuState = new WeakMap<object, { color?: number; side?: string }>();
 
 // ------------------------------------------------------------------ gesture state
 
@@ -244,6 +241,9 @@ export function SheetView(props: {
   };
 
   const onPointerDown = (e: React.PointerEvent) => {
+    // context menus are portals: their events bubble here through the React tree, but must not be
+    // treated as sheet presses (pointer capture would steal the menu item's click)
+    if (!(e.currentTarget as Element).contains(e.target as Node)) return;
     (e.currentTarget as Element).setPointerCapture(e.pointerId);
     const t = targetOf(e.target as Element);
     const p = toSheet(e.clientX, e.clientY);
@@ -260,6 +260,7 @@ export function SheetView(props: {
         return;
       }
       if (t.gate) gateContextMenu(t.gate, t.part, e);
+      else if (t.wire && sheet.isEditingEnabled()) wireContextMenu(t.wire, e);
       return;
     }
     if (!primary) return;
@@ -485,10 +486,20 @@ export function SheetView(props: {
     );
   };
 
+  const wireContextMenu = (wire: WireT, e: React.PointerEvent) => {
+    const current = wire.getColor().toUpperCase();
+    openMenu(e.clientX, e.clientY, [
+      {
+        label: 'Farba vodiča',
+        submenu: WIRE_COLOR_CHOICES.map(([label, color]) => ({
+          label, radio: true, checked: color.toUpperCase() === current, action: () => wire.setChainColor(color),
+        })),
+      },
+    ]);
+  };
+
   const gateContextMenu = (gate: GateT, part: Element | null, e: React.PointerEvent) => {
     const editing = sheet.isEditingEnabled();
-    const state = menuState.get(gate) ?? {};
-    menuState.set(gate, state);
     if (gate instanceof Register8) {
       openMenu(e.clientX, e.clientY, [{ label: Register8.SWAP_MENU, action: () => gate.toggleSwap() }]);
     } else if (gate instanceof Ram8k) {
@@ -499,20 +510,21 @@ export function SheetView(props: {
       openMenu(e.clientX, e.clientY, MultiInputGate.MENU.map((m) => ({ label: m.label, action: () => gate.setInputCount(m.count) })));
     } else if (gate instanceof Led && part?.getAttribute('data-part') === 'led') {
       if (!editing) return;
-      if (state.color === undefined) state.color = 0;
-      if (state.side === undefined) state.side = gate.getInputPin().getExitSide().name;
+      const ledSide = gate.getInputPin().getExitSide().name;
+      // the checked colour is the LED's actual colour (none if it is not one of the menu colours)
+      const ledColor = gate.getLedColor().toUpperCase();
       openMenu(e.clientX, e.clientY, [
         {
           label: 'Vývod',
           submenu: Led.PLACEMENT_MENU.map(([label, side]) => ({
-            label, radio: true, checked: state.side === side.name, action: () => { state.side = side.name; gate.placeInput(side); },
+            label, radio: true, checked: ledSide === side.name, action: () => gate.placeInput(side),
           })),
         },
         { divider: true },
         {
           label: 'Farba LED',
-          submenu: Led.COLORS.map(([label, color], i) => ({
-            label, radio: true, checked: state.color === i, action: () => { state.color = i; gate.setColor(color); },
+          submenu: Led.COLORS.map(([label, color]) => ({
+            label, radio: true, checked: color.toUpperCase() === ledColor, action: () => gate.setColor(color),
           })),
         },
       ]);

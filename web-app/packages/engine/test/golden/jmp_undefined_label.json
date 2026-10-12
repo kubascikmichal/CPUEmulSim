@@ -1,0 +1,1 @@
+{"code":"; an undefined label is a parse error, even when the program has no labels\n        MVI A, 1\n        JMP foo\n        CAL bar\n        MVI A, 2\n","parse":{"ok":false,"exception":"InvalidCodeLinesException","errorLines":[2,3],"errors":["[3] Neplatné návestie 'foo'","[4] Neplatné návestie 'bar'"]},"runs":[]}

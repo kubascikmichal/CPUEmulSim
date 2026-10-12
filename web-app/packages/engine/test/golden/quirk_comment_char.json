@@ -1,1 +1,0 @@
-{"code":"        MVI A, ';'\n","parse":{"ok":false,"exception":"InvalidCodeLinesException","errorLines":[0],"errors":["[1] Zlý počet parametrov inštrukcie 'MVI', požadovaný počet '2'"]},"runs":[]}

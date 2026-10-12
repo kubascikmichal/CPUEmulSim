@@ -92,6 +92,24 @@ public class CPU extends Thread {
      * @param console OutputStream pre výpis znakov na terminál.
      * @param bus Zbernica pre komunikáciu s vývojovou doskou.
      */
+	/** Spracovanie chyby pri vykonávaní inštrukcie (okrem chýbajúceho návestia prerušenia). */
+	private volatile java.util.function.Consumer<String> runtimeErrorHandler;
+
+	/**
+	 * Nastavenie spracovania chyby pri vykonávaní inštrukcie. Volá sa z vlákna CPU.
+	 *
+	 * @param handler Prijíma správu o chybe s číslom riadku.
+	 */
+	public void setRuntimeErrorHandler(java.util.function.Consumer<String> handler){
+		this.runtimeErrorHandler = handler;
+	}
+
+	private String describeRuntimeError(Instruction instruction, Exception e){
+		int line = program == null ? -1 : program.getLineOfInstruction(program.indexOfInstruction(instruction));
+		String where = line >= 0 ? "[" + (line + 1) + "] " : "";
+		return where + "Chyba pri vykonávaní inštrukcie '" + instruction.getType().name() + "': " + e.getMessage();
+	}
+
 	public CPU(OutputStream console, Bus bus){
 		this.console = console;
 
@@ -216,6 +234,9 @@ public class CPU extends Thread {
                             alert.setHeaderText("Chyba prerušenia");
                             alert.show();
                         });
+                    } else if (runtimeErrorHandler != null) {
+                        //ina chyba pri vykonavani - program sa zastavi, ale nie potichu
+                        runtimeErrorHandler.accept(describeRuntimeError(nextInstruction, e));
                     }
 
                     this.isExecuting = false;
@@ -691,6 +712,8 @@ public class CPU extends Thread {
             case PUS:
                 if (instruction.getFirstParameter().matches("(?i)M")) {
                     push((short) getRegisterVal(instruction.getFirstParameter()));
+                } else if (instruction.getFirstParameter().matches("(?i)F")) {
+                    push(getFlagsByte());
                 } else {
                     push((byte) getRegisterVal(instruction.getFirstParameter()));
                 }
@@ -698,6 +721,8 @@ public class CPU extends Thread {
             case POP:
                 if (instruction.getFirstParameter().matches("(?i)M")) {
                     setRegisterVal(instruction.getFirstParameter(), popShort());
+                } else if (instruction.getFirstParameter().matches("(?i)F")) {
+                    setFlagsByte(pop());
                 } else {
                     setRegisterVal(instruction.getFirstParameter(), pop());
                 }
@@ -900,6 +925,26 @@ public class CPU extends Thread {
             case "PC": regPC = (short) value; break;
             default: throw new InvalidParameterException("Neplatny register");
         }
+    }
+
+    /**
+     * Register F pre PUS F / POP F: bit0 = CY, bit1 = Z, bit2 = IE, ostatné bity sú 0.
+     *
+     * @return Príznaky zbalené do bajtu.
+     */
+    private byte getFlagsByte(){
+        return (byte) ((flagCY ? 1 : 0) | (flagZ ? 2 : 0) | (flagIE ? 4 : 0));
+    }
+
+    /**
+     * Nastavenie príznakov CY, Z a IE z registra F (POP F).
+     *
+     * @param value Bajt s príznakmi (bit0 = CY, bit1 = Z, bit2 = IE).
+     */
+    private void setFlagsByte(byte value){
+        flagCY = (value & 1) != 0;
+        flagZ = (value & 2) != 0;
+        flagIE = (value & 4) != 0;
     }
 
     /**

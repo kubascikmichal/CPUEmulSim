@@ -6,6 +6,6 @@
         EIT
         DIT
 int00:  MVI A, 2
-int0f:  MVI B, 3
+int15:  MVI B, 3
 INT05:  MVI D, 5
-interrupt: MVI D, 6
+handler: MVI D, 6

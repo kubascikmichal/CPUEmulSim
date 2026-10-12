@@ -1,0 +1,1 @@
+{"code":"; int15 and INT15 are the same interrupt\nint15:  MVI A, 1\nINT15:  MVI A, 2\n","parse":{"ok":false,"exception":"InvalidCodeLinesException","errorLines":[2],"errors":["[3] Návestie pre prerušenie INT15 už existuje"]},"runs":[]}

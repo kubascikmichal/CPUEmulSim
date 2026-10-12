@@ -17,7 +17,7 @@ Legend:
 
 | # | Item | Original behaviour (expected) | Verify |
 |---|---|---|---|
-| C1.1 | Syntax highlighting | 5 keyword classes, labels `[a-zA-Z0-9]+:`, comments; colours from CSS | U + M |
+| C1.1 | Syntax highlighting | 5 keyword classes, labels `\w+:` at line start, comments (`;` outside quotes); colours from CSS | U + M + E |
 | C1.2 | Breakpoint toggle | Gutter click toggles dot; non-instruction line → next instruction line; none if no instruction below | E |
 | C1.3 | Breakpoints follow edits | Inserting or removing lines above moves breakpoints with their lines | E |
 | C1.4 | UnBreak All | Clears all dots and line styles | E |
@@ -26,12 +26,12 @@ Legend:
 | C1.7 | Modified marker | First change appends `*` once; program invalidated; Start text resets | E |
 | C2.1 | Parser acceptance | Every corpus program: same accept/reject, same error list text and line numbers | G |
 | C2.2 | Parser constants | Dec/hex/bin/oct/char boundaries; octal `010`=8; `09`=9 | G |
-| C2.3 | Interrupt labels | `int00`–`int15`, `int0a`–`int0f`, duplicates, `INT0A` quirk (parse hangs at `Parsujem...`) | G + E |
+| C2.3 | Interrupt labels | `int00`–`int15` / `INT00`–`INT15`, duplicates; any other `int…` label is an error (`labels_int_reserved`, `labels_int_dup`) | G + E |
 | C2.4 | Parse UI | Status texts, progress, green/red console lines, error line highlight | E |
 | C3.1 | Instruction semantics | Each opcode × boundary operand set: registers, flags, memory identical | G |
 | C3.2 | Stack | Push/pop 8/16-bit, SP wrap 0↔65535 | G |
 | C3.3 | Branching | All conditional jumps/calls, RET, label→index resolution, no-label quirk | G |
-| C3.4 | Runtime stop quirks | `PUS F`, unresolved label → Idle silently | G + E |
+| C3.4 | Register F, label resolution | `PUS F`/`POP F` (bit0 CY, bit1 Z, bit2 IE); jump operands must be defined labels (`pus_pop_f`, `jmp_*`) | G + E |
 | C3.5 | SCALL KEY/KPR/DSP | Waiting state, key value mapping (arrows 37–40, Enter 13, `š`→0x61), KPR flag | G + E |
 | C3.6 | EIT timing | IE set before the instruction after EIT | G |
 | C3.7 | Interrupt sequence | Level vs change mode; missing label alert text; 0.9.4: `IT` raised from a `CB` tap in the circuit | G (bus driven by harness) + E |
@@ -43,7 +43,7 @@ Legend:
 | C4.5 | Stop in Waiting | Returns to Idle | E |
 | C4.6 | Reset | Only in Idle; zeros; no changed highlight after | E |
 | C5.1 | Register radix | Dec/Hex/Bin/ASCII formatting incl. `[LF]`, `[SPACE]` names and 16-bit `>>4` quirk | U |
-| C5.2 | Register fields inert | Typing does not change CPU state | E |
+| C5.2 | Register fields read-only | All register and flag fields are read-only | E |
 | C5.3 | Stack table | Row order, head highlight, changed highlight, auto-scroll to `65535−SP−5` | E |
 | C5.4 | Konštanty / RAM tables | 256 rows, radix toggles independent per tab and column; RAM changed highlight | E |
 | C5.5 | GUI refresh | On by default; slider 10–150, snapping; disabling stops live refresh | E |

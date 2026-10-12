@@ -86,3 +86,35 @@ test('0.9.4 wiring: an L between rows is two wires; a drop in empty space keeps 
   await drag(sim, from, { x: from.x + 120, y: from.y });
   await expect(sim.locator('[data-wire]')).toHaveCount(3);
 });
+
+test('LED menu shows the actual colour; wire colour menu colours the whole wire', async ({ page }) => {
+  await login(page);
+  const sim = await openSimulator(page);
+  const sheetBox = (await sim.getByTestId('sheet').boundingBox())!;
+  await place(sim, 'INP', sheetBox.x + 100, sheetBox.y + 100);
+  await place(sim, 'LED', sheetBox.x + 300, sheetBox.y + 220);
+  await drag(sim, await pinCenter(sim, 0, 0), await pinCenter(sim, 1, 0));
+  await expect(sim.locator('[data-wire]')).toHaveCount(2);
+
+  const ledMenu = async () => {
+    await sim.locator('[data-part="led"]').click({ button: 'right' });
+    await sim.getByRole('menuitem', { name: /Farba LED/ }).click();
+  };
+  await ledMenu();
+  await expect(sim.getByRole('menuitem', { name: /^●\s*Červená$/ })).toBeVisible();
+  await sim.getByRole('menuitem', { name: 'Modrá' }).click();
+  await ledMenu();
+  await expect(sim.getByRole('menuitem', { name: /^●\s*Modrá$/ })).toBeVisible();
+  await expect(sim.getByRole('menuitem', { name: /Červená/ })).not.toContainText('●');
+  await sim.keyboard.press('Escape');
+  await sim.keyboard.press('Escape');
+
+  // right-click one segment of the L: both segments (joined by an invisible bend) turn green
+  const seg = (await sim.locator('[data-wire] line').first().boundingBox())!;
+  await sim.mouse.click(seg.x + seg.width / 2, seg.y + seg.height / 2, { button: 'right' });
+  await sim.getByRole('menuitem', { name: /Farba vodiča/ }).click();
+  await expect(sim.getByRole('menuitem', { name: /^●\s*Čierna$/ })).toBeVisible();
+  await sim.getByRole('menuitem', { name: 'Zelená' }).click();
+  const lines = sim.locator('[data-wire] line');
+  for (let i = 0; i < (await lines.count()); i++) await expect(lines.nth(i)).toHaveAttribute('stroke', '#008000');
+});

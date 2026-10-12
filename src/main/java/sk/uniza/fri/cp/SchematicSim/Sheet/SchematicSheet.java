@@ -676,6 +676,14 @@ public class SchematicSheet extends ScrollPane {
         selected.removeIf(item -> !(item instanceof Node) || ((Node) item).getParent() == null);
     }
 
+    public List<Wire> getSelectedWires() {
+        List<Wire> result = new ArrayList<>();
+        for (Selectable selectable : selected) {
+            if (selectable instanceof Wire) result.add((Wire) selectable);
+        }
+        return result;
+    }
+
     public List<GateSymbol> getSelectedGates() {
         List<GateSymbol> result = new ArrayList<>();
         for (Selectable selectable : selected) {

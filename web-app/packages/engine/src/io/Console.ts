@@ -168,9 +168,9 @@ export class ConsoleOutputStream implements ConsoleStream {
     this.onPending?.();
   }
 
-  /** `write(byte[])` - the original loop stops at `length - 1`: the last byte is dropped. */
+  /** `write(byte[])` (the original dropped the last byte). */
   writeBytes(bytes: number[]): void {
-    for (let i = 0; i < bytes.length - 1; i++) this.write(bytes[i]);
+    for (let i = 0; i < bytes.length; i++) this.write(bytes[i]);
   }
 
   /** `fxWriteThrottle`: write queued characters for at most 15 ms. Returns true if more remain. */

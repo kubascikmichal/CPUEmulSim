@@ -1201,6 +1201,7 @@ public class CPUController implements Initializable {
         this.cos_cpu = new ConsoleOutputStream(console);
         this.cpu = new CPU(cos_cpu, Bus.getBus());
         this.cpu.setDaemon(true);
+        this.cpu.setRuntimeErrorHandler(msg -> Platform.runLater(() -> writeConsoleLn("[CPU] " + msg, "red")));
 
         this.cpu.stateProperty().addListener( (observable,  oldValue,  newValue) -> onCPUStateChanged(newValue) );
 

@@ -51,17 +51,14 @@ function ReprToggle({ reprKey, options, small }: { reprKey: ReprKey; options: Re
 
 // ------------------------------------------------------------------ Registre
 
-function RegisterField({ label, text, readOnly }: { label: string; text: string; readOnly?: boolean }) {
-  // The original fields are editable (except CY) but edits are never written to the CPU.
-  const [value, setValue] = useState(text);
-  useEffect(() => setValue(text), [text]);
+/** Register fields only display the CPU state; they are read-only. */
+function RegisterField({ label, text }: { label: string; text: string }) {
   return (
     <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 1.25, p: 0.5 }}>
       <Typography sx={{ fontSize: 13 }}>{label}</Typography>
       <TextField
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        inputProps={{ readOnly, 'data-testid': `reg-${label}`, style: { padding: '3px 6px', fontSize: 13 } }}
+        value={text}
+        inputProps={{ readOnly: true, 'data-testid': `reg-${label}`, style: { padding: '3px 6px', fontSize: 13 } }}
         sx={{ width: label.length <= 2 && ['CY', 'Z', 'IE'].includes(label) ? 30 : 130 }}
       />
     </Box>
@@ -90,7 +87,7 @@ export function RegistersPane() {
         <RegisterField label="MP" text={s(r.mp)} />
         <hr style={{ width: '100%', margin: 0 }} />
         <Box sx={{ display: 'flex', justifyContent: 'center', gap: 1.25 }}>
-          <Flag label="CY" value={r.cy} readOnly />
+          <Flag label="CY" value={r.cy} />
           <Flag label="Z" value={r.z} />
           <Flag label="IE" value={r.ie} />
         </Box>
@@ -99,16 +96,13 @@ export function RegistersPane() {
   );
 }
 
-function Flag({ label, value, readOnly }: { label: string; value: boolean; readOnly?: boolean }) {
-  const [text, setText] = useState(value ? '1' : '0');
-  useEffect(() => setText(value ? '1' : '0'), [value]);
+function Flag({ label, value }: { label: string; value: boolean }) {
   return (
     <Box sx={{ display: 'flex', alignItems: 'center' }}>
       <Typography sx={{ fontSize: 13 }}>{label}&nbsp;</Typography>
       <TextField
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        inputProps={{ readOnly, 'data-testid': `flag-${label}`, style: { padding: '3px 4px', fontSize: 13, width: 18 } }}
+        value={value ? '1' : '0'}
+        inputProps={{ readOnly: true, 'data-testid': `flag-${label}`, style: { padding: '3px 4px', fontSize: 13, width: 18 } }}
       />
     </Box>
   );

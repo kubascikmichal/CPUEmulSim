@@ -1,0 +1,1 @@
+{"code":"        MVI A, 1\n        ,,\n        MVI B, 2\n","parse":{"ok":false,"exception":"InvalidCodeLinesException","errorLines":[1],"errors":["[2] Neplatná inštrukcia ',,'"]},"runs":[]}

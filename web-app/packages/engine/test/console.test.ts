@@ -43,12 +43,12 @@ describe('ConsoleOutputStream (port semantics)', () => {
     expect(model.getText()).toBe('[CPU KONZOLA]\nAB\n[CPU KONZOLA]\nC');
   });
 
-  test('write(byte[]) drops the last byte (original loop bound)', () => {
+  test('write(byte[]) writes every byte, including the last one', () => {
     const model = new ConsoleModel();
     const out = new ConsoleOutputStream(model);
-    out.writeBytes(ascii('abc '));
+    out.writeBytes(ascii('abc!'));
     out.flush();
-    expect(model.getText()).toBe('[CPU KONZOLA]\nabc');
+    expect(model.getText()).toBe('[CPU KONZOLA]\nabc!');
   });
 
   test('negative byte values become (char) b', () => {

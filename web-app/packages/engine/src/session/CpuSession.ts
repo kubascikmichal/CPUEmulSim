@@ -137,6 +137,7 @@ export class CpuSession {
     this.cosCpu.onPending = () => this.wake();
     this.cpu = new Cpu(this.cosCpu, this.bus, this.clock);
     this.cpu.onInterruptLabelError = (msg) => this.onInterruptError?.(msg);
+    this.cpu.onRuntimeError = (msg) => writeConsoleLn(this.console, '[CPU] ' + msg, 'red');
     this.cpu.onStateChange((s) => this.onCPUStateChanged(s));
     this.cpu.start();
     this.cpu.setIntLevel(this.fIntByLevel);
@@ -261,7 +262,6 @@ export class CpuSession {
 
   /**
    * `parseCode(startExecution)`. Returns once parsing finished; on success optionally starts.
-   * An uncaught parser exception (e.g. label INT0a) leaves the status at "Parsujem...".
    */
   async parseCode(code: string, lineCount: number, startExecution: boolean): Promise<ParseResult> {
     this.setView({ errorLines: [], statusText: 'Parsujem...', progress: 0 });

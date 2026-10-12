@@ -157,6 +157,16 @@ public class Program {
      * @param address Adresa inštrukcie v pämati (index inštrukcie)
      * @return Inštrukcia na adrese alebo null
      */
+	/**
+	 * Adresa danej inštrukcie v programe.
+	 *
+	 * @param instruction Inštrukcia programu
+	 * @return Index inštrukcie, alebo -1 ak nie je v programe
+	 */
+	int indexOfInstruction(Instruction instruction){
+		return instructions.indexOf(instruction);
+	}
+
 	Instruction getInstruction(int address){
 		try {
 			return instructions.get(address);

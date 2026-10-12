@@ -20,7 +20,10 @@ import java.util.regex.Pattern;
 public class Parser extends Task<Program>{
 
     private static final String LABEL_PATTERN = "^\\s*\\w+:"; //po zaciatku riadku ziadna alebo viac whitespace znakov, [a-zA-Z_0-9] a dvojbodka
-    private static final String COMMENT_PATTERN = "(?m);.*$"; //vsetko za bodkociarkou po koniec riadku
+    /** Návestia pre obsluhu prerušení: int00 až int15 alebo INT00 až INT15 (desiatkovo). */
+    private static final Pattern INT_LABEL_PATTERN = Pattern.compile("(?:int|INT)(0\\d|1[0-5])");
+    /** Maximálny počet konštánt BYTE (veľkosť tabuľky Konštanty). */
+    public static final int MAX_CONSTANTS = 256;
 
     //KOD
     private String code;
@@ -70,8 +73,7 @@ public class Parser extends Task<Program>{
      */
     public static boolean isInstrucionLine(String line){
         //odstranenie komentarov
-        Pattern patternComment = Pattern.compile(COMMENT_PATTERN);
-        line = patternComment.matcher(line).replaceAll("");
+        line = stripLineComment(line);
         if(line.isEmpty()) return false;
 
         //odstranenie navestia
@@ -91,6 +93,36 @@ public class Parser extends Task<Program>{
         } catch (IllegalArgumentException e){
             return false;
         }
+    }
+
+    /**
+     * Odstráni komentáre zo všetkých riadkov kódu. Bodkočiarka vo vnútri znakovej konštanty (';')
+     * alebo reťazca v úvodzovkách komentár nezačína.
+     *
+     * @param code Kód programu
+     * @return Kód bez komentárov
+     */
+    public static String stripComments(String code){
+        String[] lines = code.split("\n", -1);
+        for (int i = 0; i < lines.length; i++) lines[i] = stripLineComment(lines[i]);
+        return String.join("\n", lines);
+    }
+
+    private static String stripLineComment(String line){
+        int[] cps = line.codePoints().toArray(); //po znakoch (code points), ako vzor '.'
+        for (int i = 0; i < cps.length; i++) {
+            int c = cps[i];
+            if (c == '\'' && i + 2 < cps.length && cps[i + 2] == '\'') {
+                i += 2;
+            } else if (c == '"') {
+                int close = -1;
+                for (int j = i + 1; j < cps.length; j++) if (cps[j] == '"') { close = j; break; }
+                if (close != -1) i = close;
+            } else if (c == ';') {
+                return new String(cps, 0, i);
+            }
+        }
+        return line;
     }
 
     /**
@@ -141,6 +173,17 @@ public class Parser extends Task<Program>{
      */
     @Override
     protected Program call() throws InvalidCodeLinesException {
+        try {
+            return parseCode();
+        } catch (InvalidCodeLinesException e) {
+            throw e;
+        } catch (RuntimeException e) {
+            //neocakavana chyba sa vypise ako chyba v kode (inak by stav ostal navzdy "Parsujem...")
+            throw new InvalidCodeLinesException(new int[0], new String[]{"Neočakávaná chyba parsera: " + e});
+        }
+    }
+
+    private Program parseCode() throws InvalidCodeLinesException {
         int lineIndex = 0;
 
         //Priprava na parsovanie instrukcie
@@ -149,8 +192,7 @@ public class Parser extends Task<Program>{
         Matcher instructionMatcher;
 
         //odstranenie vsetkych komentarov
-        Pattern pat = Pattern.compile(COMMENT_PATTERN);
-        code = pat.matcher(code).replaceAll("");
+        code = stripComments(code);
 
         //pattern pre navestia
         Pattern patternLabel = Pattern.compile(LABEL_PATTERN);
@@ -171,42 +213,24 @@ public class Parser extends Task<Program>{
                     String label = matcherLabel.group();
                     label = label.substring(0, label.length()-1).trim(); //odstranenie dvojbodky a medzier
 
-                    //existuje uz dane navestie?
-                    if(!labels.containsKey(label)) {
-                        //kontrola, ci sa jedna o navestie pre prerusenie
-                        if(label.matches("[iI][nN][tT].*")){
-                            // Karpis - navestie musi byt int00 az int15
-                            // alebo aj int00 az int0f
-                            if(label.matches("[iI][nN][tT]([0]\\d|[1][012345]|[0][abcdef])")){
-                                //splna podmienky navestia pre prerusenie
-                                int intNumber;
-
-                                if(label.matches("int0\\p{XDigit}")){
-                                    // hexa
-                                    intNumber = Integer.parseInt(label.substring(4,5), 16);
-                                } else {
-                                    // dec
-                                    intNumber = Integer.parseInt(label.substring(3,5), 10);
-                                }
-
-                                if(!interruptionLabels.containsKey(intNumber)){
-                                    interruptionLabels.put(intNumber, instructions.size()); //index nasledujucej instrukcie, ktora bude pridana
-                                } else{
-                                    addError("Návestie pre prerušenie " + label + " už existuje", lineIndex);
-                                }
-
-                            } else {
-                                //asi to malo byt prerusenie ale je v zlom tvare
-                                // Karpis: Nasl. riadok zablokovany, aby boli mozne navestia zacinajuce na "int"
-                                //addError("Nesprávny tvar návestia pre prerušenie '" + label + "'", lineIndex);
+                    if(labels.containsKey(label)) {
+                        addError("Návestie " + label + " už existuje", lineIndex);
+                    } else if(label.regionMatches(true, 0, "int", 0, 3)) {
+                        //navestia zacinajuce na "int" su vyhradene pre prerusenia: iba int00 az int15 / INT00 az INT15
+                        Matcher matcherInt = INT_LABEL_PATTERN.matcher(label);
+                        if(!matcherInt.matches()){
+                            addError("Neplatné návestie " + label + " - návestia začínajúce na 'int' sú vyhradené pre prerušenia (int00 - int15)", lineIndex);
+                        } else {
+                            int intNumber = Integer.parseInt(matcherInt.group(1));
+                            if(!interruptionLabels.containsKey(intNumber)){
+                                interruptionLabels.put(intNumber, instructions.size()); //index nasledujucej instrukcie, ktora bude pridana
+                                labels.put(label, instructions.size()); //aby sa bolo mozne nan odkazovat
+                            } else{
+                                addError("Návestie pre prerušenie " + label + " už existuje", lineIndex);
                             }
                         }
-
-                        //obycajne navestie aj prerusenie, aby sa bolo mozne nan odkazova
-                        labels.put(label, instructions.size()); //index nasledujucej instrukcie, ktora bude pridana
-
                     } else {
-                        addError("Návestie " + label + " už existuje", lineIndex);
+                        labels.put(label, instructions.size()); //index nasledujucej instrukcie, ktora bude pridana
                     }
 
                     //odstran navestie z riadku
@@ -228,6 +252,13 @@ public class Parser extends Task<Program>{
                 instructionMatcher = instructionPattern.matcher(line);
                 while (instructionMatcher.find()){
                     instructionParts.add(instructionMatcher.group());
+                }
+                if(instructionParts.isEmpty()){
+                    //riadok bez instrukcie (napr. iba ciarky)
+                    addError("Neplatná inštrukcia '" + line + "'", lineIndex);
+                    lineIndex++;
+                    line = br.readLine();
+                    continue;
                 }
 
                 //je instrukcia platna?
@@ -273,6 +304,10 @@ public class Parser extends Task<Program>{
                                 case 1:
                                     //ak je instrukcia BYTE, zaved konstantu do pamate ale nie instrukciu do programu
                                     if(codeInstruction == enumInstructionsSet.BYTE){
+                                        if(progMemory.size() >= MAX_CONSTANTS){
+                                            addError("Príliš veľa konštánt BYTE (max. " + MAX_CONSTANTS + ")", lineIndex);
+                                            break;
+                                        }
                                         byte b = (byte) parseConstant(instructionParts.get(1));
                                         progMemory.add(b);
                                     } else {
@@ -316,7 +351,8 @@ public class Parser extends Task<Program>{
         }
 
         //ak je program v poriadku, preved navestia na indexy
-        if(!hasError && labels.size() > 0) transformLabelsToIndexes();
+        //navestia sa vyhodnocuju vzdy - parameter skoku musi byt definovane navestie
+        if(!hasError) transformLabelsToIndexes();
 
         //zmensenie pola arraylistu na minimum
         instructions.trimToSize();

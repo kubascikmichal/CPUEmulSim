@@ -1110,6 +1110,21 @@ export class Wire {
     return true;
   }
 
+  /**
+   * Wire context menu "Farba vodiča": colours the whole wire - every segment joined through
+   * invisible bends, up to pins and visible junctions. When this wire is selected, all selected
+   * wires (and their chains) are coloured.
+   */
+  setChainColor(color: WireColor): void {
+    const sheet = this.getSheet();
+    const targets = this.isSelected()
+      ? sheet.getSelected().filter((s): s is Wire => s instanceof Wire)
+      : [this];
+    const coloured = new Set<Wire>();
+    for (const wire of targets) for (const w of wire.collectChain()) coloured.add(w);
+    for (const w of coloured) w.changeColor(color);
+  }
+
   /** Chain between anchors: crosses invisible bends (exactly two wires). */
   collectChain(): Wire[] {
     const result: Wire[] = [this];

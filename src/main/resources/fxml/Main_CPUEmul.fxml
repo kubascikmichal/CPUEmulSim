@@ -259,7 +259,7 @@
                                           <HBox alignment="CENTER_RIGHT" spacing="5.0">
                                              <children>
                                                 <Label text="A" />
-                                                <TextField fx:id="tfRegA" maxWidth="130.0" minWidth="100.0" prefHeight="25.0" prefWidth="130.0" />
+                                                <TextField fx:id="tfRegA" editable="false" maxWidth="130.0" minWidth="100.0" prefHeight="25.0" prefWidth="130.0" />
                                              </children>
                                              <padding>
                                                 <Insets bottom="2.0" left="2.0" right="2.0" top="2.0" />
@@ -268,7 +268,7 @@
                                           <HBox alignment="CENTER_RIGHT" layoutX="10.0" layoutY="10.0" spacing="5.0">
                                              <children>
                                                 <Label text="B" />
-                                                <TextField fx:id="tfRegB" maxWidth="130.0" minWidth="100.0" prefHeight="25.0" prefWidth="130.0" />
+                                                <TextField fx:id="tfRegB" editable="false" maxWidth="130.0" minWidth="100.0" prefHeight="25.0" prefWidth="130.0" />
                                              </children>
                                              <VBox.margin>
                                                 <Insets />
@@ -280,7 +280,7 @@
                                           <HBox alignment="CENTER_RIGHT" layoutX="10.0" layoutY="35.0" spacing="5.0">
                                              <children>
                                                 <Label text="C" />
-                                                <TextField fx:id="tfRegC" maxWidth="130.0" minWidth="100.0" prefHeight="25.0" prefWidth="130.0" />
+                                                <TextField fx:id="tfRegC" editable="false" maxWidth="130.0" minWidth="100.0" prefHeight="25.0" prefWidth="130.0" />
                                              </children>
                                              <VBox.margin>
                                                 <Insets />
@@ -292,7 +292,7 @@
                                           <HBox alignment="CENTER_RIGHT" layoutX="10.0" layoutY="60.0" spacing="5.0">
                                              <children>
                                                 <Label text="D" />
-                                                <TextField fx:id="tfRegD" maxWidth="130.0" minWidth="100.0" prefHeight="25.0" prefWidth="130.0" />
+                                                <TextField fx:id="tfRegD" editable="false" maxWidth="130.0" minWidth="100.0" prefHeight="25.0" prefWidth="130.0" />
                                              </children>
                                              <VBox.margin>
                                                 <Insets />
@@ -305,7 +305,7 @@
                                           <HBox alignment="CENTER_RIGHT" layoutX="10.0" layoutY="85.0" spacing="5.0">
                                              <children>
                                                 <Label text="PC" />
-                                                <TextField fx:id="tfRegPC" maxWidth="130.0" minWidth="100.0" prefHeight="25.0" prefWidth="130.0" />
+                                                <TextField fx:id="tfRegPC" editable="false" maxWidth="130.0" minWidth="100.0" prefHeight="25.0" prefWidth="130.0" />
                                              </children>
                                              <padding>
                                                 <Insets bottom="2.0" left="2.0" right="2.0" top="2.0" />
@@ -314,7 +314,7 @@
                                           <HBox alignment="CENTER_RIGHT" layoutX="10.0" layoutY="110.0" spacing="5.0">
                                              <children>
                                                 <Label text="SP" />
-                                                <TextField fx:id="tfRegSP" maxWidth="130.0" minWidth="100.0" prefHeight="25.0" prefWidth="130.0" />
+                                                <TextField fx:id="tfRegSP" editable="false" maxWidth="130.0" minWidth="100.0" prefHeight="25.0" prefWidth="130.0" />
                                              </children>
                                              <padding>
                                                 <Insets bottom="2.0" left="2.0" right="2.0" top="2.0" />
@@ -323,7 +323,7 @@
                                           <HBox alignment="CENTER_RIGHT" layoutX="10.0" layoutY="110.0" spacing="5.0">
                                              <children>
                                                 <Label text="MP" />
-                                                <TextField fx:id="tfRegMP" maxWidth="130.0" minWidth="100.0" prefHeight="25.0" prefWidth="130.0" />
+                                                <TextField fx:id="tfRegMP" editable="false" maxWidth="130.0" minWidth="100.0" prefHeight="25.0" prefWidth="130.0" />
                                              </children>
                                              <padding>
                                                 <Insets bottom="2.0" left="2.0" right="2.0" top="2.0" />
@@ -341,13 +341,13 @@
                                                 <HBox alignment="CENTER" layoutX="10.0" layoutY="10.0">
                                                    <children>
                                                       <Label text="Z " />
-                                                      <TextField fx:id="tfFlagZ" maxWidth="30.0" />
+                                                      <TextField fx:id="tfFlagZ" editable="false" maxWidth="30.0" />
                                                    </children>
                                                 </HBox>
                                                 <HBox alignment="CENTER" layoutX="88.0" layoutY="10.0">
                                                    <children>
                                                       <Label text="IE " />
-                                                      <TextField fx:id="tfFlagIE" maxWidth="30.0" />
+                                                      <TextField fx:id="tfFlagIE" editable="false" maxWidth="30.0" />
                                                    </children>
                                                 </HBox>
                                              </children>

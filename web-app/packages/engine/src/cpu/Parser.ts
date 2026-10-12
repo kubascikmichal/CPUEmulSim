@@ -1,14 +1,17 @@
 /**
  * Port of `sk.uniza.fri.cp.CPUEmul.Parser` (a JavaFX Task<Program> in the original).
  *
- * Outcome mirrors the Task: success → Program; failure → the thrown exception. Besides
- * {@link InvalidCodeLinesException} the original can fail with other, uncaught exceptions
- * (e.g. NumberFormatException for label `INT0a`, IndexOutOfBoundsException for a line of only
- * commas/quotes); those are reproduced and reported as `{ ok:false, error }` with that type.
+ * Outcome mirrors the Task: success → Program; failure → {@link InvalidCodeLinesException}.
+ * Deliberate fixes against the original:
+ * - `;` starts a comment only outside quotes (`MVI A, ';'` is valid),
+ * - only `int00`…`int15` / `INT00`…`INT15` are interrupt labels; any other label starting with
+ *   `int` (any case) is an error,
+ * - labels are always resolved: every jump/call operand must be a defined label,
+ * - more than {@link MAX_CONSTANTS} BYTE constants is an error,
+ * - unexpected failures (e.g. a line of only commas) are reported as errors, not left hanging.
  */
 import {
   IllegalArgumentException,
-  IndexOutOfBoundsException,
   J_DOT,
   J_WS,
   javaTrim,
@@ -20,13 +23,39 @@ import { Instruction, InvalidCodeLinesException, Program } from './Program';
 
 /** `^\s*\w+:` found at the start of a line. */
 const LABEL_PATTERN = new RegExp(`^${J_WS}*\\w+:`);
-/** `(?m);.*$` - everything from `;` to the end of the line. */
-const COMMENT_PATTERN = new RegExp(`;${J_DOT}*`, 'gu');
+/** Size of the Konštanty table (program memory for BYTE constants). */
+export const MAX_CONSTANTS = 256;
 /** `[^\s"',]+|'.'` */
 const INSTRUCTION_PATTERN = new RegExp(`[^ \\t\\n\\x0B\\f\\r"',]+|'${J_DOT}'`, 'gu');
 const BYTE_CHAR = new RegExp(rByteChar, 'u');
 const HEX_CONSTANT = new RegExp(`^0[xX]${J_DOT}+$`, 'u');
-const INT_PREFIX = new RegExp(`^[iI][nN][tT]${J_DOT}*$`, 'u');
+const INT_PREFIX = /^int/i;
+/** Interrupt handler labels: `int00`…`int15` or `INT00`…`INT15` (decimal). */
+const INT_LABEL = /^(?:int|INT)(0\d|1[0-5])$/;
+
+/**
+ * Removes `;` comments from every line. A `;` inside a character literal (`';'`) or a
+ * double-quoted string does not start a comment.
+ */
+export function stripComments(code: string): string {
+  return code.split('\n').map(stripLineComment).join('\n');
+}
+
+function stripLineComment(line: string): string {
+  const chars = Array.from(line); // code points, like the `'.'` literal pattern
+  for (let i = 0; i < chars.length; i++) {
+    const c = chars[i];
+    if (c === "'" && i + 2 < chars.length && chars[i + 2] === "'") {
+      i += 2;
+    } else if (c === '"') {
+      const close = chars.indexOf('"', i + 1);
+      if (close !== -1) i = close;
+    } else if (c === ';') {
+      return chars.slice(0, i).join('');
+    }
+  }
+  return line;
+}
 
 export type ParseResult =
   | { ok: true; program: Program }
@@ -37,7 +66,7 @@ export type ParseResult =
  * Used by the editor to snap breakpoints to instruction lines.
  */
 export function isInstructionLine(line: string): boolean {
-  line = line.replace(COMMENT_PATTERN, '');
+  line = stripLineComment(line);
   if (line.length === 0) return false;
   line = line.replace(new RegExp(LABEL_PATTERN.source, 'g'), '');
   if (line.length === 0) return false;
@@ -75,7 +104,9 @@ export function parse(
   try {
     return { ok: true, program: new ParserRun(code, numberOfCodeLines, onProgress).call() };
   } catch (error) {
-    return { ok: false, error: error as Error };
+    if (error instanceof InvalidCodeLinesException) return { ok: false, error };
+    const message = error instanceof Error ? error.message : String(error);
+    return { ok: false, error: new InvalidCodeLinesException([], ['Neočakávaná chyba parsera: ' + message]) };
   }
 }
 
@@ -98,7 +129,7 @@ class ParserRun {
 
   call(): Program {
     let lineIndex = 0;
-    this.code = this.code.replace(COMMENT_PATTERN, '');
+    this.code = stripComments(this.code);
 
     for (let line of readLines(this.code)) {
       this.onProgress?.(lineIndex + 1, this.numOfCodeLines);
@@ -108,22 +139,24 @@ class ParserRun {
         let label = labelMatch[0];
         label = javaTrim(label.substring(0, label.length - 1));
 
-        if (!this.labels.has(label)) {
-          if (INT_PREFIX.test(label)) {
-            if (/^[iI][nN][tT](?:[0]\d|[1][012345]|[0][abcdef])$/.test(label)) {
-              const intNumber = /^int0[0-9A-Fa-f]$/.test(label)
-                ? parseIntJava(label.substring(4, 5), 16)
-                : parseIntJava(label.substring(3, 5), 10); // throws for "INT0a" - uncaught, as in Java
-              if (!this.interruptionLabels.has(intNumber)) {
-                this.interruptionLabels.set(intNumber, this.instructions.length);
-              } else {
-                this.addError('Návestie pre prerušenie ' + label + ' už existuje', lineIndex);
-              }
+        if (this.labels.has(label)) {
+          this.addError('Návestie ' + label + ' už existuje', lineIndex);
+        } else if (INT_PREFIX.test(label)) {
+          const m = INT_LABEL.exec(label);
+          if (m === null) {
+            this.addError('Neplatné návestie ' + label +
+              " - návestia začínajúce na 'int' sú vyhradené pre prerušenia (int00 - int15)", lineIndex);
+          } else {
+            const intNumber = Number(m[1]);
+            if (!this.interruptionLabels.has(intNumber)) {
+              this.interruptionLabels.set(intNumber, this.instructions.length);
+              this.labels.set(label, this.instructions.length);
+            } else {
+              this.addError('Návestie pre prerušenie ' + label + ' už existuje', lineIndex);
             }
           }
-          this.labels.set(label, this.instructions.length);
         } else {
-          this.addError('Návestie ' + label + ' už existuje', lineIndex);
+          this.labels.set(label, this.instructions.length);
         }
 
         line = line.substring(labelMatch[0].length);
@@ -136,8 +169,11 @@ class ParserRun {
       }
 
       const instructionParts = line.match(INSTRUCTION_PATTERN) ?? [];
-      // instructionParts.get(0) on an empty list throws IndexOutOfBoundsException (not caught)
-      if (instructionParts.length === 0) throw new IndexOutOfBoundsException('Index: 0, Size: 0');
+      if (instructionParts.length === 0) {
+        this.addError("Neplatná inštrukcia '" + line + "'", lineIndex);
+        lineIndex++;
+        continue;
+      }
 
       try {
         this.parseInstruction(instructionParts, lineIndex);
@@ -151,7 +187,7 @@ class ParserRun {
 
     this.onProgress?.(this.numOfCodeLines, this.numOfCodeLines);
 
-    if (!this.hasError && this.labels.size > 0) this.transformLabelsToIndexes();
+    if (!this.hasError) this.transformLabelsToIndexes();
 
     if (!this.hasError) {
       return new Program(this.instructions, this.progMemory, this.lineIndexToInstructionIndex,
@@ -192,19 +228,23 @@ class ParserRun {
 
     if (parametersError) return;
 
-    this.addToProgram(def, parts);
+    this.addToProgram(def, parts, lineIndex);
 
     if (def.usesLabel) this.instructionsWithLabels.push(this.instructions.length - 1);
     this.lineIndexToInstructionIndex.set(lineIndex, this.instructions.length - 1);
   }
 
-  private addToProgram(def: InstructionDef, parts: string[]): void {
+  private addToProgram(def: InstructionDef, parts: string[], lineIndex: number): void {
     switch (def.numOfParameters) {
       case 0:
         this.instructions.push(new Instruction(def));
         break;
       case 1:
         if (def.name === 'BYTE') {
+          if (this.progMemory.length >= MAX_CONSTANTS) {
+            this.addError('Príliš veľa konštánt BYTE (max. ' + MAX_CONSTANTS + ')', lineIndex);
+            break;
+          }
           this.progMemory.push(((parseConstant(parts[1]) << 24) >> 24));
         } else {
           this.instructions.push(new Instruction(def, parts[1]));

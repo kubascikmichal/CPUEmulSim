@@ -26,6 +26,17 @@ export const COLOR_CHOICES: readonly [string, string][] = [
   ['Oranžová', FX.ORANGE],
 ];
 
+/** Colour choices of the wire context menu (label → colour), in menu order. */
+export const WIRE_COLOR_CHOICES: readonly [string, string][] = [
+  ['Čierna', FX.BLACK],
+  ['Červená', FX.RED],
+  ['Zelená', FX.GREEN],
+  ['Modrá', FX.BLUE],
+  ['Žltá', FX.YELLOW],
+  ['Oranžová', FX.ORANGE],
+  ['Šedá', FX.GRAY],
+];
+
 /**
  * `javafx.scene.paint.Color.web(String)` for the forms that can occur in files: `#rgb`, `#rrggbb`,
  * `#rrggbbaa`, `0x…`, and the named colours above. Throws like Java on anything else.

@@ -4,6 +4,10 @@ import javafx.application.Platform;
 import javafx.geometry.Point2D;
 import javafx.scene.Group;
 import javafx.scene.Node;
+import javafx.scene.control.ContextMenu;
+import javafx.scene.control.Menu;
+import javafx.scene.control.RadioMenuItem;
+import javafx.scene.control.ToggleGroup;
 import javafx.scene.input.MouseEvent;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Line;
@@ -182,6 +186,46 @@ public class Wire extends HighlightGroup {
 
     public Color getColor() {
         return this.color;
+    }
+
+    /** Farby v kontextovom menu vodiča "Farba vodiča" (názov -> farba), v poradí menu. */
+    public static final Map<String, Color> WIRE_COLORS = new LinkedHashMap<>();
+    static {
+        WIRE_COLORS.put("Čierna", Color.BLACK);
+        WIRE_COLORS.put("Červená", Color.RED);
+        WIRE_COLORS.put("Zelená", Color.GREEN);
+        WIRE_COLORS.put("Modrá", Color.BLUE);
+        WIRE_COLORS.put("Žltá", Color.YELLOW);
+        WIRE_COLORS.put("Oranžová", Color.ORANGE);
+        WIRE_COLORS.put("Šedá", Color.GRAY);
+    }
+
+    /**
+     * Zmena farby celého vodiča: všetkých úsekov spojených cez ohyby (až po pin alebo viditeľný
+     * spájač). Ak je vodič vybraný, zafarbia sa všetky vybrané vodiče.
+     *
+     * @param newColor Nová farba
+     */
+    public void setChainColor(Color newColor) {
+        SchematicSheet sheet = getSheet();
+        List<Wire> targets = this.isSelected() ? sheet.getSelectedWires() : java.util.Collections.singletonList(this);
+        Set<Wire> coloured = new LinkedHashSet<>();
+        for (Wire wire : targets) coloured.addAll(wire.collectChain());
+        for (Wire wire : coloured) wire.changeColor(newColor);
+        sheet.markChanged();
+    }
+
+    private void showColorMenu(double screenX, double screenY) {
+        Menu colorMenu = new Menu("Farba vodiča");
+        ToggleGroup group = new ToggleGroup();
+        for (Map.Entry<String, Color> entry : WIRE_COLORS.entrySet()) {
+            RadioMenuItem item = new RadioMenuItem(entry.getKey());
+            item.setToggleGroup(group);
+            item.setSelected(entry.getValue().equals(this.color));
+            item.setOnAction(e -> setChainColor(entry.getValue()));
+            colorMenu.getItems().add(item);
+        }
+        new ContextMenu(colorMenu).show(this, screenX, screenY);
     }
 
     /**
@@ -842,6 +886,13 @@ public class Wire extends HighlightGroup {
         this.addEventFilter(MouseEvent.MOUSE_RELEASED, event -> {
             if (Pin.getInProgressWire() == null) return;
             Pin.finishInProgressWire();
+            event.consume();
+        });
+
+        // pravy klik: kontextove menu s farbou vodica
+        this.setOnContextMenuRequested(event -> {
+            if (getSheet() == null || !getSheet().isEditingEnabled() || this.preview) return;
+            showColorMenu(event.getScreenX(), event.getScreenY());
             event.consume();
         });
 

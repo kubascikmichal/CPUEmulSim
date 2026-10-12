@@ -134,16 +134,16 @@ public class ConsoleOutputStream extends OutputStream {
 
     @Override
     public void write(byte[] b) throws IOException {
-        for (int i = 0; i < b.length - 1; i++){
+        for (int i = 0; i < b.length; i++){
             write(b[i]);
         }
     }
 
     @Override
     public void write(byte[] b, int off, int len) throws IOException {
-        if(off < 0 || off > b.length-1 || len > b.length-1 - off) throw new IOException("Invalid argument");
+        if(off < 0 || len < 0 || off + len > b.length) throw new IOException("Invalid argument");
 
-        for (int i = off; i < len - off; i++){
+        for (int i = off; i < off + len; i++){
             write(b[i]);
         }
     }

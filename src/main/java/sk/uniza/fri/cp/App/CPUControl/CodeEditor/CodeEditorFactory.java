@@ -10,6 +10,7 @@ import org.fxmisc.richtext.LineNumberFactory;
 import org.fxmisc.richtext.model.StyleSpans;
 import org.fxmisc.richtext.model.StyleSpansBuilder;
 
+import sk.uniza.fri.cp.CPUEmul.Parser;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.function.IntFunction;
@@ -43,8 +44,8 @@ public class CodeEditorFactory {
     private static final String KEYWORDS_MOVE_PATTERN = "\\b(" + String.join("|", KEYWORDS_MOVE) + ")\\b";
     private static final String KEYWORDS_BRANCH_PATTERN = "\\b(" + String.join("|", KEYWORDS_BRANCH) + ")\\b";
     private static final String KEYWORDS_SPECIAL_PATTERN = "\\b(" + String.join("|", KEYWORDS_SPECIAL) + ")\\b";
-    private static final String LABEL_PATTERN = "[a-zA-Z0-9]+:";
-    private static final String COMMENT_PATTERN = ";.*";
+    /** Rovnaké pravidlo ako v parseri: \w+: na začiatku riadku. */
+    private static final Pattern LABEL_PATTERN = Pattern.compile("^\\s*(\\w+:)");
 
     private static final Pattern PATTERN = Pattern.compile(
             "(?i)(?<KEYWORDSARITHMETICANDLOGIC>" + KEYWORDS_ARITHMETIC_AND_LOGIC_PATTERN + ")"
@@ -52,8 +53,6 @@ public class CodeEditorFactory {
                     +"|(?<KEYWORDSMOVE>" + KEYWORDS_MOVE_PATTERN + ")"
                     +"|(?<KEYWORDSBRANCH>" + KEYWORDS_BRANCH_PATTERN + ")"
                     +"|(?<KEYWORDSSPECIAL>" + KEYWORDS_SPECIAL_PATTERN + ")"
-                    + "|(?<LABEL>" + LABEL_PATTERN + ")"
-                    + "|(?<COMMENT>" + COMMENT_PATTERN + ")"
     );
 
     private CodeEditorFactory() {
@@ -90,25 +89,38 @@ public class CodeEditorFactory {
      * Farebne zvýraznoňanie v editore kódu
      */
     private static StyleSpans<Collection<String>> computeHighlighting(String text) {
-        Matcher matcher = PATTERN.matcher(text);
-        int lastKwEnd = 0;
-        StyleSpansBuilder<Collection<String>> spansBuilder
-                = new StyleSpansBuilder<>();
-        while(matcher.find()) {
-            String styleClass =
-                    matcher.group("KEYWORDSARITHMETICANDLOGIC") != null ? "keyword-arithmetic-and-logic" :
-                            matcher.group("KEYWORDSSHIFTANDROTATE") != null ? "keyword-shift-and-rotate" :
-                                    matcher.group("KEYWORDSMOVE") != null ? "keyword-move" :
-                                            matcher.group("KEYWORDSBRANCH") != null ? "keyword-branch" :
-                                                    matcher.group("KEYWORDSSPECIAL") != null ? "keyword-special" :
-                                                            matcher.group("LABEL") != null ? "label" :
-                                                                    matcher.group("COMMENT") != null ? "comment" :
-                                                                            null; /* never happens */ assert styleClass != null;
-            spansBuilder.add(Collections.emptyList(), matcher.start() - lastKwEnd);
-            spansBuilder.add(Collections.singleton(styleClass), matcher.end() - matcher.start());
-            lastKwEnd = matcher.end();
+        StyleSpansBuilder<Collection<String>> spansBuilder = new StyleSpansBuilder<>();
+        String[] lines = text.split("\n", -1);
+        for (int i = 0; i < lines.length; i++) {
+            String line = lines[i];
+            //komentar podla pravidla parsera: ';' v uvodzovkach nie je komentar
+            String code = Parser.stripComments(line);
+            int last = 0;
+
+            Matcher label = LABEL_PATTERN.matcher(code);
+            if (label.find()) {
+                spansBuilder.add(Collections.emptyList(), label.start(1));
+                spansBuilder.add(Collections.singleton("label"), label.end(1) - label.start(1));
+                last = label.end(1);
+            }
+
+            Matcher matcher = PATTERN.matcher(code);
+            matcher.region(last, code.length());
+            while (matcher.find()) {
+                String styleClass =
+                        matcher.group("KEYWORDSARITHMETICANDLOGIC") != null ? "keyword-arithmetic-and-logic" :
+                                matcher.group("KEYWORDSSHIFTANDROTATE") != null ? "keyword-shift-and-rotate" :
+                                        matcher.group("KEYWORDSMOVE") != null ? "keyword-move" :
+                                                matcher.group("KEYWORDSBRANCH") != null ? "keyword-branch" :
+                                                        "keyword-special";
+                spansBuilder.add(Collections.emptyList(), matcher.start() - last);
+                spansBuilder.add(Collections.singleton(styleClass), matcher.end() - matcher.start());
+                last = matcher.end();
+            }
+            spansBuilder.add(Collections.emptyList(), code.length() - last);
+            if (code.length() < line.length()) spansBuilder.add(Collections.singleton("comment"), line.length() - code.length());
+            if (i < lines.length - 1) spansBuilder.add(Collections.emptyList(), 1); //znak noveho riadku
         }
-        spansBuilder.add(Collections.emptyList(), text.length() - lastKwEnd);
         return spansBuilder.create();
     }
 }
