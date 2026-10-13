@@ -1,6 +1,7 @@
 /** Auth API client (`/api/auth/*`). */
 export interface SessionInfo {
-  user: { username: string; displayName: string };
+  /** role: `admin`, `teacher`, `student` (local accounts) or `user` (LDAP / no login) */
+  user: { username: string; displayName: string; role: string };
   session: { idleTimeoutSec: number; absoluteExpiresAt: string };
 }
 
@@ -13,6 +14,7 @@ export function authFetch(url: string, init: RequestInit = {}): Promise<Response
 const MESSAGES: Record<string, string> = {
   invalid_credentials: 'Nesprávne používateľské meno alebo heslo.',
   not_authorized: 'Nemáte oprávnenie na použitie aplikácie.',
+  account_disabled: 'Účet je zablokovaný. Obráťte sa na vyučujúceho.',
   directory_unavailable: 'Adresárová služba nie je dostupná. Skúste to neskôr.',
   rate_limited: 'Príliš veľa pokusov. Skúste to neskôr.',
 };

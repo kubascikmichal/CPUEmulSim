@@ -112,6 +112,13 @@ const configSchema = z.object({
       loginRateLimit: z
         .object({ perIpPerMin: z.number().int().positive().default(10), perUserPerMin: z.number().int().positive().default(5) })
         .default({}),
+      /**
+       * Proof-of-work captcha on registration (ALTCHA protocol, self-hosted). `maxNumber` is the
+       * work bound: the browser computes on average maxNumber/2 SHA-256 hashes.
+       */
+      captcha: z
+        .object({ enabled: z.boolean().default(true), maxNumber: z.number().int().positive().default(100_000) })
+        .default({}),
     })
     .default({}),
 });

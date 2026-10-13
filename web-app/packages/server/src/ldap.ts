@@ -11,7 +11,8 @@ import { readFileSync } from 'node:fs';
 import { Client, InvalidCredentialsError } from 'ldapts';
 import type { AuthorizationConfig, LdapConfig } from './config.ts';
 
-export type AuthFailure = 'invalid_credentials' | 'not_authorized' | 'directory_unavailable';
+/** `account_disabled` is only returned for local accounts (after a correct password). */
+export type AuthFailure = 'invalid_credentials' | 'not_authorized' | 'directory_unavailable' | 'account_disabled';
 
 export type AuthResult =
   | { ok: true; username: string; displayName: string; roles: string[]; mail?: string }

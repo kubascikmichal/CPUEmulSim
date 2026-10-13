@@ -31,6 +31,8 @@ export class CpuWindowController {
   editor: EditorView | null = null;
   dialogs: DialogApi | null = null;
   user: string | null = null;
+  /** Session role (`admin`, `teacher`, `student`, `user`); teachers and the admin see user management. */
+  role: string | null = null;
 
   // ---- observable UI state
   currentFile: string | null = null;
@@ -257,6 +259,15 @@ export class CpuWindowController {
     this.schematicWindow?.close();
     await this.onExit?.();
     return true;
+  }
+
+  /** Teachers and the admin manage users on a separate page (opened next to the emulator). */
+  canManageUsers(): boolean {
+    return this.role === 'teacher' || this.role === 'admin';
+  }
+
+  openUserManagement(): void {
+    window.open('/admin', '_blank', 'noopener');
   }
 
   // ---------------------------------------------------------------- editor helpers

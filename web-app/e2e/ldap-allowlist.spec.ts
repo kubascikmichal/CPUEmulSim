@@ -25,5 +25,5 @@ test('LDAP login: allowlisted e-mail gets in, others are refused', async ({ page
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByTestId('status')).toHaveText('Nečinný');
   const session = await (await page.request.get('/api/auth/session')).json();
-  expect(session.user).toEqual({ username: 'alice.novakova@test.local', displayName: 'Alice Nováková' });
+  expect(session.user).toEqual({ username: 'alice.novakova@test.local', displayName: 'Alice Nováková', role: 'user' });
 });

@@ -41,6 +41,8 @@ export function SessionGuard({ controller, children }: { controller: CpuWindowCo
   useEffect(() => {
     if (info === null) return;
     controller.user = info.user.username;
+    controller.role = info.user.role;
+    controller.changed();
     schematicController.user = info.user.username;
     controller.onExit = async () => {
       await logoutRequest();

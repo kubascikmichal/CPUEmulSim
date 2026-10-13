@@ -7,6 +7,10 @@ import helmet from '@fastify/helmet';
 import fastifyStatic from '@fastify/static';
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import { resolve } from 'node:path';
+import type { LocalAccounts } from './accounts.ts';
+import { ADMIN_ROLE } from './admin.ts';
+import { primaryRole, registerAdminRoutes } from './admin-api.ts';
+import { Captcha } from './captcha.ts';
 import { isLdapEnabled, type Config } from './config.ts';
 import { FileStore, FileStoreError } from './files.ts';
 import type { AuthResult } from './ldap.ts';
@@ -17,15 +21,11 @@ export interface Authenticator {
   check(): Promise<boolean>;
 }
 
-/** Self-registration (`auth.mode: local`). */
-export interface Registrar {
-  register(username: string, password: string): Promise<{ ok: true; username: string } | { ok: false; error: string }>;
-}
-
 export interface AppOptions {
   config: Config;
   authenticator: Authenticator;
-  registrar?: Registrar;
+  /** Local accounts (`auth.mode: local`): self-registration and user management. */
+  accounts?: LocalAccounts;
   now?: () => number;
   logger?: boolean;
 }
@@ -41,7 +41,7 @@ declare module 'fastify' {
   }
 }
 
-export async function buildApp({ config, authenticator, registrar, now = Date.now, logger = true }: AppOptions) {
+export async function buildApp({ config, authenticator, accounts, now = Date.now, logger = true }: AppOptions) {
   const app = Fastify({
     logger: logger ? { level: 'info', redact: ['req.headers.cookie', 'req.headers.authorization'] } : false,
     trustProxy: config.server.trustProxy,
@@ -52,6 +52,9 @@ export async function buildApp({ config, authenticator, registrar, now = Date.no
   const ipLimiter = new RateLimiter(config.security.loginRateLimit.perIpPerMin, 60_000, now);
   const userLimiter = new RateLimiter(config.security.loginRateLimit.perUserPerMin, 60_000, now);
   const files = new FileStore(config.files.dataDir, config.files);
+  const local = config.auth.mode === 'local' && accounts !== undefined;
+  const registration = local && config.auth.allowRegistration;
+  const captcha = registration && config.security.captcha.enabled ? new Captcha(config.security.captcha.maxNumber, undefined, now) : null;
   const sweep = setInterval(() => sessions.sweep(), 60_000);
   app.addHook('onClose', async () => clearInterval(sweep));
 
@@ -109,7 +112,7 @@ export async function buildApp({ config, authenticator, registrar, now = Date.no
   };
 
   const sessionInfo = (s: SessionData) => ({
-    user: { username: s.username, displayName: s.displayName },
+    user: { username: s.username, displayName: s.displayName, role: primaryRole(s.roles) },
     session: { idleTimeoutSec: sessions.idleTimeoutSec, absoluteExpiresAt: sessions.absoluteExpiry(s).toISOString() },
   });
 
@@ -133,7 +136,7 @@ export async function buildApp({ config, authenticator, registrar, now = Date.no
     const result = await authenticator.authenticate(username, password);
     if (!result.ok) {
       req.log.info({ event: 'login', user: username, ip, result: result.error, reason: result.reason });
-      const status = result.error === 'not_authorized' ? 403 : result.error === 'directory_unavailable' ? 503 : 401;
+      const status = result.error === 'not_authorized' || result.error === 'account_disabled' ? 403 : result.error === 'directory_unavailable' ? 503 : 401;
       return reply.code(status).send({ error: result.error });
     }
 
@@ -148,30 +151,41 @@ export async function buildApp({ config, authenticator, registrar, now = Date.no
   // public: tells the login page which forms to offer
   app.get('/api/auth/config', async () => ({
     mode: config.auth.mode,
-    registration: config.auth.mode === 'local' && config.auth.allowRegistration && registrar !== undefined,
+    registration,
+    captcha: captcha !== null,
     ldap: isLdapEnabled(config),
   }));
 
+  // public: proof-of-work challenge for the registration form
+  app.get('/api/auth/captcha', async (_req, reply) => {
+    if (captcha === null) return reply.code(404).send({ error: 'not_found' });
+    return reply.header('Cache-Control', 'no-store').send(captcha.create());
+  });
+
   app.post('/api/auth/register', async (req, reply) => {
-    if (config.auth.mode !== 'local' || !config.auth.allowRegistration || registrar === undefined) {
-      return reply.code(404).send({ error: 'not_found' });
-    }
-    const body = (req.body ?? {}) as { username?: unknown; password?: unknown };
+    if (!registration) return reply.code(404).send({ error: 'not_found' });
+    const body = (req.body ?? {}) as { username?: unknown; password?: unknown; name?: unknown; captcha?: unknown };
     const username = typeof body.username === 'string' ? body.username.trim() : '';
     const password = typeof body.password === 'string' ? body.password : '';
+    const name = typeof body.name === 'string' ? body.name : '';
     const ip = req.ip;
     if (!ipLimiter.attempt(ip)) {
       req.log.warn({ event: 'register', user: username, ip, result: 'rate_limited' });
       return reply.code(429).send({ error: 'rate_limited' });
     }
-    const result = await registrar.register(username, password);
+    if (captcha !== null && !captcha.verify(body.captcha)) {
+      req.log.info({ event: 'register', user: username, ip, result: 'captcha_failed' });
+      return reply.code(400).send({ error: 'captcha_failed' });
+    }
+    const result = await accounts!.register(username, password, name);
     if (!result.ok) {
       req.log.info({ event: 'register', user: username, ip, result: result.error });
       return reply.code(result.error === 'username_taken' ? 409 : 400).send({ error: result.error });
     }
     // registration logs the new user in (fresh session id, as on login)
     sessions.destroy(req.cookies[config.session.cookieName]);
-    const { id, data } = sessions.create({ username: result.username, displayName: result.username, roles: ['user'] });
+    const created = (await accounts!.find(result.username))!;
+    const { id, data } = sessions.create({ username: created.username, displayName: created.name, roles: [created.role] });
     setSessionCookie(reply, id);
     req.log.info({ event: 'register', user: result.username, ip, result: 'success' });
     return reply.code(201).send(sessionInfo(data));
@@ -262,6 +276,10 @@ export async function buildApp({ config, authenticator, registrar, now = Date.no
     }
   });
 
+  // ---------------------------------------------------------------- user management (teachers, admin)
+
+  if (local) registerAdminRoutes(app, { accounts: accounts!, sessions, files });
+
   // ---------------------------------------------------------------- health
 
   app.get('/api/health', async () => ({ status: 'ok' }));
@@ -280,6 +298,16 @@ export async function buildApp({ config, authenticator, registrar, now = Date.no
   app.get('/index.html', page('index.html'));
   app.get('/schematic', page('schematic.html'));
   app.get('/schematic.html', page('schematic.html'));
+
+  // user management page: teachers and the admin only (others go back to the emulator)
+  const adminPage = async (req: FastifyRequest, reply: FastifyReply) => {
+    if (req.session === null) return reply.redirect('/login');
+    const role = primaryRole(req.session.roles);
+    if (!local || (role !== ADMIN_ROLE && role !== 'teacher')) return reply.redirect('/');
+    return reply.header('Cache-Control', 'no-store').sendFile('admin.html');
+  };
+  app.get('/admin', adminPage);
+  app.get('/admin.html', adminPage);
 
   const loginPage = async (req: FastifyRequest, reply: FastifyReply) => {
     if (req.session !== null) return reply.redirect('/');

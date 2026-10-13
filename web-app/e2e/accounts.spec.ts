@@ -3,7 +3,7 @@
  * and download the file. Skipped on servers without registration (e.g. the LDAP dev stack).
  */
 import { expect, test } from '@playwright/test';
-import { setCode } from './helpers';
+import { setCode, solveCaptcha } from './helpers';
 
 test('register → save → Koniec → log in again → file is there → download', async ({ page, request }) => {
   const cfg = await (await request.get('/api/auth/config')).json().catch(() => ({}));
@@ -21,9 +21,13 @@ test('register → save → Koniec → log in again → file is there → downlo
   await page.click('#switch-link');
   await expect(page.locator('#password2')).toBeVisible();
   await expect(page.locator('#heading')).toHaveText('CPU Emulator - registrácia');
+  await page.fill('#name', 'E2E Študent');
   await page.fill('#username', user);
   await page.fill('#password', password);
   await page.fill('#password2', password + 'x');
+  // the form can only be sent with a solved captcha
+  if (cfg.captcha) await expect(page.locator('#submit')).toBeDisabled();
+  await solveCaptcha(page);
   await page.click('#submit');
   await expect(page.locator('#error')).toHaveText('Heslá sa nezhodujú.');
   await page.fill('#password2', password);
@@ -46,9 +50,11 @@ test('register → save → Koniec → log in again → file is there → downlo
 
   // a duplicate registration is refused
   await page.click('#switch-link');
+  await page.fill('#name', 'Iný Študent');
   await page.fill('#username', user.toUpperCase());
   await page.fill('#password', password);
   await page.fill('#password2', password);
+  await solveCaptcha(page);
   await page.click('#submit');
   await expect(page.locator('#error')).toHaveText('Používateľské meno je už obsadené.');
 

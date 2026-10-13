@@ -25,6 +25,13 @@ describe('wire colour (context menu "Farba vodiča")', () => {
     expect(WIRE_COLOR_CHOICES.map(([label]) => label)).toEqual(['Čierna', 'Červená', 'Zelená', 'Modrá', 'Žltá', 'Oranžová', 'Šedá']);
   });
 
+  test('a colour change marks the scheme modified (unsaved-changes prompt, draft)', () => {
+    const sheet = load(names[0]);
+    sheet.clearChange();
+    sheet.getWires()[0].setChainColor(RED);
+    expect(sheet.hasChanged()).toBe(true);
+  });
+
   test('colours the whole chain through bends and nothing else', () => {
     let multiSegment = 0;
     for (const name of names) {

@@ -15,6 +15,7 @@ import { parseConfig } from '../src/config.ts';
 import { LdapAuthenticator } from '../src/ldap.ts';
 import { LocalAccounts } from '../src/accounts.ts';
 import { CombinedAuthenticator, EmailAllowlist } from '../src/combined.ts';
+import { EnvAdmin, withAdmin } from '../src/admin.ts';
 import { BASE, GROUP_USERS, SERVICE_DN, SERVICE_PASSWORD, startAdTestServer } from './adTestServer.ts';
 
 const ad = await startAdTestServer();
@@ -41,11 +42,13 @@ const config = parseConfig({
   security: { loginRateLimit: { perIpPerMin: 1000, perUserPerMin: 1000 } },
 });
 const ldap = new LdapAuthenticator(config.ldap!, local ? null : config.authorization!, { DEV_LDAP_PW: SERVICE_PASSWORD });
-const accounts = new LocalAccounts(dataDir);
+// AUTH_MODE=local: administrator from CPUEMUL_ADMIN_USERNAME / CPUEMUL_ADMIN_PASSWORD (optional)
+const admin = local ? EnvAdmin.fromEnv() : null;
+const accounts = new LocalAccounts(dataDir, admin ? [admin.username] : []);
 const app = await buildApp({
   config,
-  authenticator: local ? new CombinedAuthenticator(accounts, ldap, new EmailAllowlist(config.ldap!.allowedEmailsFile)) : ldap,
-  ...(local ? { registrar: accounts } : {}),
+  authenticator: local ? withAdmin(admin, new CombinedAuthenticator(accounts, ldap, new EmailAllowlist(config.ldap!.allowedEmailsFile))) : ldap,
+  ...(local ? { accounts } : {}),
   logger: process.env.QUIET !== '1',
 });
 await app.listen({ host: config.server.host, port: config.server.port });

@@ -27,6 +27,9 @@ files:
 
 security:
   loginRateLimit: { perIpPerMin: 10, perUserPerMin: 5 }
+  # proof-of-work captcha on registration (self-hosted, ALTCHA protocol); the browser computes on
+  # average maxNumber/2 SHA-256 hashes (~1 s at 100000)
+  captcha: { enabled: true, maxNumber: 100000 }
 
 # LDAP / Active Directory: empty `urls` = not used. Fill in to let directory users log in too;
 # they are admitted only if their e-mail is listed in allowedEmailsFile (re-read on change).

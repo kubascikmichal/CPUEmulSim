@@ -10,6 +10,7 @@ export default defineConfig({
       input: {
         main: resolve(__dirname, 'index.html'),
         schematic: resolve(__dirname, 'schematic.html'),
+        admin: resolve(__dirname, 'admin.html'),
       },
     },
   },

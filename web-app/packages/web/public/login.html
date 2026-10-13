@@ -11,11 +11,16 @@
     <main>
       <form id="login" novalidate>
         <header><img src="/login-assets/cpu_icon.png" width="32" height="32" alt="" /><h1 id="heading">CPU Emulator</h1></header>
+        <label id="name-row" hidden>Meno a priezvisko<input id="name" name="name" autocomplete="name" maxlength="100" /></label>
         <label><span id="username-label">Používateľské meno</span><input id="username" name="username" autocomplete="username" autofocus required /></label>
         <p id="username-hint" class="hint" hidden>3–32 znakov: písmená, číslice, bodka, podčiarkovník, pomlčka.</p>
         <label>Heslo<input id="password" name="password" type="password" autocomplete="current-password" required /></label>
         <label id="password2-row" hidden>Heslo znova<input id="password2" name="password2" type="password" autocomplete="new-password" /></label>
         <p id="password-hint" class="hint" hidden>Aspoň 8 znakov.</p>
+        <div id="captcha-row" class="captcha" hidden>
+          <label class="captcha-box"><input id="captcha-check" type="checkbox" /><span id="captcha-text">Nie som robot</span></label>
+          <span class="captcha-note">overenie prebehne vo vašom prehliadači</span>
+        </div>
         <p id="error" role="alert" hidden></p>
         <button id="submit" type="submit" disabled>Prihlásiť</button>
         <p id="switch" class="switch" hidden>

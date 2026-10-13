@@ -59,6 +59,28 @@ export class SessionStore {
     return Math.round(this.idleMs / 1000);
   }
 
+  /** Valid sessions of a user (case-insensitive name). */
+  private idsOf(username: string): string[] {
+    const lower = username.toLowerCase();
+    return [...this.sessions.keys()].filter((id) => this.get(id)?.username.toLowerCase() === lower);
+  }
+
+  /** Logs the user out everywhere (account disabled, deleted or password changed). */
+  destroyUser(username: string): void {
+    for (const id of this.idsOf(username)) this.sessions.delete(id);
+  }
+
+  /** Applies a new display name / roles to the user's open sessions (no re-login needed). */
+  updateUser(username: string, patch: Partial<Pick<SessionData, 'displayName' | 'roles'>>): void {
+    for (const id of this.idsOf(username)) Object.assign(this.sessions.get(id)!, patch);
+  }
+
+  /** Online = at least one valid session; `lastActivity` = the latest activity of those sessions. */
+  activity(username: string): { online: boolean; lastActivity: number | null } {
+    const times = this.idsOf(username).map((id) => this.sessions.get(id)!.lastActivity);
+    return times.length === 0 ? { online: false, lastActivity: null } : { online: true, lastActivity: Math.max(...times) };
+  }
+
   /** Periodic cleanup. */
   sweep(): void {
     for (const id of [...this.sessions.keys()]) this.get(id);

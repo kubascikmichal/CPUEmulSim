@@ -63,13 +63,15 @@ sudo install -o root -g root    -m 0600 cpuemul.env.example      /etc/cpuemul/cp
 
 What to check in `/etc/cpuemul/server.yaml`:
 
-- `auth.mode: local` - users register and log in with their own accounts. Set `allowRegistration: false` to close registration (existing accounts and LDAP users can still log in).
+- `auth.mode: local` - users register and log in with their own accounts. Registration asks for the full name and a captcha (`security.captcha`, a proof of work solved in the browser - no external service). Set `allowRegistration: false` to close registration (existing accounts and LDAP users can still log in).
 - `server.host: 127.0.0.1`, `port: 8080` - only nginx can reach the app.
 - `session.secureCookie: true` - correct behind HTTPS. Set it to `false` only for a plain-HTTP test run.
 - `files.dataDir: /var/lib/cpuemul` - accounts (`accounts.json`, passwords stored as scrypt hashes) and every user's files.
 - `ldap.urls: []` - LDAP is off. See [step 7](#7-turning-on-ldap).
 
 Paths in the file must be absolute (see the comments in the file).
+
+In `/etc/cpuemul/cpuemul.env`, set the administrator: `CPUEMUL_ADMIN_USERNAME` and `CPUEMUL_ADMIN_PASSWORD` (8-128 characters). See [Users and roles](#users-and-roles).
 
 ## 4. systemd service
 
@@ -83,6 +85,21 @@ curl -s http://127.0.0.1:8080/api/health # {"status":"ok"}
 ```
 
 The unit runs as `cpuemul` and may write only to `/var/lib/cpuemul`. It reads `CPUEMUL_CONFIG` and secrets from `/etc/cpuemul/cpuemul.env`.
+
+## Users and roles
+
+With `auth.mode: local` there are three kinds of users:
+
+| Role | Who | Can |
+|---|---|---|
+| Student | everyone who registers (or is created / imported by a teacher) | use the emulator, save and load own files |
+| Teacher | a student promoted by the administrator | additionally: on the page **Správa používateľov** (menu `Súbor`, or `https://YOUR.DOMAIN/admin`) list students (online state, last login, storage), create students, import a class from CSV, change a student's name or password, block / unblock, delete a student with all files |
+| Administrator | the account from `cpuemul.env` | everything a teacher can, for every account, and switches accounts between student and teacher |
+
+- Blocking, deleting or a new password logs the user out at once. A blocked user sees "Účet je zablokovaný" at login.
+- CSV import: one student per line, `name;username` (e.g. `Ján Novák;jnovak`); a header line is optional, `,` works too. Passwords are generated; the teacher downloads the list (name, username, password) right after the import - it is not shown again. At most 300 lines per import.
+- Accounts registered before this version become active students.
+- Changing the administrator's name or password: edit `cpuemul.env`, then `sudo systemctl restart cpuemul`.
 
 ## 5. nginx and HTTPS
 

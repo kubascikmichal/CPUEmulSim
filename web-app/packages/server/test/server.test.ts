@@ -2,11 +2,15 @@
  * Server tests: LDAP scenarios L1–L20 (docs/migration/04-test-plan.md §4) and the file store
  * scenarios FS1–FS11 (§4a), against the in-process AD test directory.
  */
-import { mkdirSync, mkdtempSync, readFileSync, utimesSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest';
 import { LocalAccounts } from '../src/accounts.ts';
+import { EnvAdmin, withAdmin } from '../src/admin.ts';
+import { MAX_IMPORT_ROWS, parseStudentCsv } from '../src/admin-api.ts';
+import { Captcha } from '../src/captcha.ts';
 import { userKey } from '../src/files.ts';
 import { CombinedAuthenticator, EmailAllowlist } from '../src/combined.ts';
 import { buildApp } from '../src/app.ts';
@@ -23,6 +27,7 @@ beforeAll(async () => {
   writeFileSync(join(publicDir, 'index.html'), '<html>app</html>');
   writeFileSync(join(publicDir, 'schematic.html'), '<html>schematic</html>');
   writeFileSync(join(publicDir, 'login.html'), '<html>login</html>');
+  writeFileSync(join(publicDir, 'admin.html'), '<html>admin</html>');
   for (const d of ['assets', 'icons', 'login-assets']) mkdirSync(join(publicDir, d));
   writeFileSync(join(publicDir, 'assets', 'main.js'), 'console.log("app")');
   writeFileSync(join(publicDir, 'icons', 'cpu_icon.png'), 'png');
@@ -68,6 +73,17 @@ async function login(a: Awaited<ReturnType<typeof app>>, username: string, passw
   });
 }
 
+/** Solves the registration captcha like the browser does (brute force over 0..maxnumber). */
+async function solveCaptcha(a: { inject: (o: { url: string }) => Promise<{ json: () => unknown }> }): Promise<string> {
+  const c = (await a.inject({ url: '/api/auth/captcha' })).json() as { algorithm: string; challenge: string; maxnumber: number; salt: string; signature: string };
+  for (let n = 0; n <= c.maxnumber; n++) {
+    if (createHash('sha256').update(c.salt + n).digest('hex') === c.challenge) {
+      return Buffer.from(JSON.stringify({ algorithm: c.algorithm, challenge: c.challenge, number: n, salt: c.salt, signature: c.signature })).toString('base64');
+    }
+  }
+  throw new Error('captcha not solvable');
+}
+
 const sid = (res: { cookies: { name: string; value: string }[] }) => res.cookies.find((c) => c.name === 'cpuemul.sid');
 
 describe('LDAP authentication (L1–L20)', () => {
@@ -75,7 +91,7 @@ describe('LDAP authentication (L1–L20)', () => {
     const a = await app();
     const res = await login(a, 'alice');
     expect(res.statusCode).toBe(200);
-    expect(res.json().user).toEqual({ username: 'alice', displayName: 'Alice Nováková' });
+    expect(res.json().user).toEqual({ username: 'alice', displayName: 'Alice Nováková', role: 'user' });
     const c = sid(res) as unknown as { httpOnly: boolean; secure: boolean; sameSite: string; path: string };
     expect(c).toMatchObject({ httpOnly: true, secure: true, sameSite: 'Strict', path: '/' });
   });
@@ -379,20 +395,26 @@ describe('auth.mode local (registration + password login)', () => {
       server: { publicDir },
       session: { secureCookie: false },
       files: { dataDir },
-      security: { loginRateLimit: { perIpPerMin: 1000, perUserPerMin: 1000 } },
+      security: { loginRateLimit: { perIpPerMin: 1000, perUserPerMin: 1000 }, captcha: { maxNumber: 300 } },
     });
   const localApp = async (dataDir: string, allowRegistration = true) => {
     const accounts = new LocalAccounts(dataDir);
-    return buildApp({ config: localConfig(dataDir, allowRegistration), authenticator: accounts, registrar: accounts, logger: false });
+    return buildApp({ config: localConfig(dataDir, allowRegistration), authenticator: accounts, accounts, logger: false });
   };
-  const post = (a: Awaited<ReturnType<typeof localApp>>, url: string, body: object, cookie?: string) =>
-    a.inject({ method: 'POST', url, payload: body, headers: { ...CSRF, ...(cookie ? { cookie } : {}) } });
+  /** POST; registrations get a solved captcha and a default name unless the body has its own. */
+  const post = async (a: Awaited<ReturnType<typeof localApp>>, url: string, body: object, cookie?: string) => {
+    const payload =
+      url === '/api/auth/register' && (await a.inject({ url: '/api/auth/config' })).json().captcha
+        ? { name: 'Testovací Študent', captcha: await solveCaptcha(a), ...body }
+        : body;
+    return a.inject({ method: 'POST', url, payload, headers: { ...CSRF, ...(cookie ? { cookie } : {}) } });
+  };
   const cookieOf = (res: { headers: Record<string, unknown> }) => String(res.headers['set-cookie']).split(';')[0];
 
   test('register creates an account and a session; files land in the new workspace', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'cpuemul-local-'));
     const a = await localApp(dir);
-    expect((await a.inject({ url: '/api/auth/config' })).json()).toEqual({ mode: 'local', registration: true, ldap: false });
+    expect((await a.inject({ url: '/api/auth/config' })).json()).toEqual({ mode: 'local', registration: true, captcha: true, ldap: false });
     const res = await post(a, '/api/auth/register', { username: 'Jana.K', password: 'tajneheslo1' });
     expect(res.statusCode).toBe(201);
     expect(res.json().user.username).toBe('Jana.K');
@@ -444,7 +466,7 @@ describe('auth.mode local (registration + password login)', () => {
 
   test('registration off: endpoint 404, config says so; LDAP mode has no registration', async () => {
     const a = await localApp(mkdtempSync(join(tmpdir(), 'cpuemul-local-')), false);
-    expect((await a.inject({ url: '/api/auth/config' })).json()).toEqual({ mode: 'local', registration: false, ldap: false });
+    expect((await a.inject({ url: '/api/auth/config' })).json()).toEqual({ mode: 'local', registration: false, captcha: false, ldap: false });
     expect((await post(a, '/api/auth/register', { username: 'eva', password: 'heslo12345' })).statusCode).toBe(404);
     const ldapApp = await app();
     expect((await ldapApp.inject({ method: 'POST', url: '/api/auth/register', payload: { username: 'eva', password: 'heslo12345' }, headers: CSRF })).statusCode).toBe(404);
@@ -465,7 +487,7 @@ describe('auth.mode local + LDAP (e-mail allowlist)', () => {
         server: { publicDir },
         session: { secureCookie: false },
         files: { dataDir },
-        security: { loginRateLimit: { perIpPerMin: 1000, perUserPerMin: 1000 } },
+        security: { loginRateLimit: { perIpPerMin: 1000, perUserPerMin: 1000 }, captcha: { enabled: false } },
         ldap: {
           urls,
           allowInsecure: true,
@@ -483,7 +505,7 @@ describe('auth.mode local + LDAP (e-mail allowlist)', () => {
     const authenticator = isLdapEnabled(cfg)
       ? new CombinedAuthenticator(accounts, new LdapAuthenticator(cfg.ldap, null, env), new EmailAllowlist(cfg.ldap.allowedEmailsFile, () => {}))
       : accounts;
-    return buildApp({ config: cfg, authenticator, registrar: accounts, logger: false });
+    return buildApp({ config: cfg, authenticator, accounts, logger: false });
   };
   const loginAs = (a: Awaited<ReturnType<typeof combinedApp>>, username: string, password = PASSWORD) =>
     a.inject({ method: 'POST', url: '/api/auth/login', payload: { username, password }, headers: CSRF });
@@ -513,10 +535,10 @@ describe('auth.mode local + LDAP (e-mail allowlist)', () => {
   test('LDAP user on the allowlist logs in (e-mail matched case-insensitively) and gets an e-mail workspace', async () => {
     const dir = workspace();
     const a = await combinedApp(dir);
-    expect((await a.inject({ url: '/api/auth/config' })).json()).toEqual({ mode: 'local', registration: true, ldap: true });
+    expect((await a.inject({ url: '/api/auth/config' })).json()).toEqual({ mode: 'local', registration: true, captcha: false, ldap: true });
     const res = await loginAs(a, 'alice');
     expect(res.statusCode).toBe(200);
-    expect(res.json().user).toEqual({ username: 'alice.novakova@test.local', displayName: 'Alice Nováková' });
+    expect(res.json().user).toEqual({ username: 'alice.novakova@test.local', displayName: 'Alice Nováková', role: 'user' });
     const cookie = String(res.headers['set-cookie']).split(';')[0];
     await a.inject({ method: 'PUT', url: '/api/files/ldap.asm', payload: 'X', headers: { ...CSRF, cookie, 'content-type': 'text/plain' } });
     expect(readFileSync(join(dir, 'users', userKey('alice.novakova@test.local'), 'files', 'ldap.asm'), 'utf8')).toBe('X');
@@ -545,19 +567,19 @@ describe('auth.mode local + LDAP (e-mail allowlist)', () => {
   test('local accounts keep working next to LDAP and take precedence for their own name', async () => {
     const dir = workspace();
     const a = await combinedApp(dir);
-    const reg = await a.inject({ method: 'POST', url: '/api/auth/register', payload: { username: 'alice', password: 'lokalne-heslo' }, headers: CSRF });
+    const reg = await a.inject({ method: 'POST', url: '/api/auth/register', payload: { username: 'alice', password: 'lokalne-heslo', name: 'Alica Lokálna' }, headers: CSRF });
     expect(reg.statusCode).toBe(201);
     expect((await loginAs(a, 'alice', 'lokalne-heslo')).json().user.username).toBe('alice');
     expect((await loginAs(a, 'alice', PASSWORD)).statusCode).toBe(401); // the LDAP password does not apply to a local name
     // registering an e-mail-like name is impossible, so an LDAP workspace cannot be taken over
-    const squat = await a.inject({ method: 'POST', url: '/api/auth/register', payload: { username: 'alice.novakova@test.local', password: 'heslo12345' }, headers: CSRF });
+    const squat = await a.inject({ method: 'POST', url: '/api/auth/register', payload: { username: 'alice.novakova@test.local', password: 'heslo12345', name: 'X' }, headers: CSRF });
     expect(squat.json()).toEqual({ error: 'invalid_username' });
   });
 
   test('directory unreachable: local accounts still log in, LDAP users get 503', async () => {
     const dir = workspace();
     const a = await combinedApp(dir, ['ldap://127.0.0.1:1']);
-    await a.inject({ method: 'POST', url: '/api/auth/register', payload: { username: 'jana', password: 'heslo12345' }, headers: CSRF });
+    await a.inject({ method: 'POST', url: '/api/auth/register', payload: { username: 'jana', password: 'heslo12345', name: 'Jana' }, headers: CSRF });
     expect((await loginAs(a, 'jana', 'heslo12345')).statusCode).toBe(200);
     expect((await loginAs(a, 'alice')).statusCode).toBe(503);
     expect((await a.inject({ url: '/api/health/ready' })).statusCode).toBe(200);
@@ -565,5 +587,235 @@ describe('auth.mode local + LDAP (e-mail allowlist)', () => {
 
   test('allowlist parsing: comments, blank lines, case, CRLF', () => {
     expect([...EmailAllowlist.parse('# x\r\nA@B.sk # c\r\n\r\n  c@d.sk  \n')]).toEqual(['a@b.sk', 'c@d.sk']);
+  });
+});
+
+describe('user management: admin, teachers, students (UM)', () => {
+  const ADMIN = 'spravca';
+  const ADMIN_PW = 'admin-heslo-1';
+  const umApp = async (dataDir = mkdtempSync(join(tmpdir(), 'cpuemul-um-'))) => {
+    const config = parseConfig({
+      auth: { mode: 'local' },
+      server: { publicDir },
+      session: { secureCookie: false },
+      files: { dataDir },
+      security: { loginRateLimit: { perIpPerMin: 1000, perUserPerMin: 1000 }, captcha: { maxNumber: 300 } },
+    });
+    const accounts = new LocalAccounts(dataDir, [ADMIN]);
+    const app = await buildApp({ config, authenticator: withAdmin(new EnvAdmin(ADMIN, ADMIN_PW), accounts), accounts, logger: false });
+    return { app, dataDir };
+  };
+  type A = Awaited<ReturnType<typeof umApp>>['app'];
+  const cookieOf = (res: { headers: Record<string, unknown> }) => String(res.headers['set-cookie']).split(';')[0];
+  const call = (a: A, method: string, url: string, cookie: string, payload?: object) =>
+    a.inject({ method: method as 'GET', url, headers: { ...CSRF, cookie }, ...(payload ? { payload } : {}) });
+  const loginAs = (a: A, username: string, password: string) =>
+    a.inject({ method: 'POST', url: '/api/auth/login', payload: { username, password }, headers: CSRF });
+  const register = async (a: A, username: string, name = 'Študent ' + username, password = 'heslo12345') =>
+    a.inject({ method: 'POST', url: '/api/auth/register', headers: CSRF, payload: { username, password, name, captcha: await solveCaptcha(a) } });
+  const sessionOf = async (a: A, cookie: string) => a.inject({ url: '/api/auth/session', headers: { cookie } });
+  /** Admin session + a teacher (promoted by the admin) with its session. */
+  const setup = async () => {
+    const { app: a, dataDir } = await umApp();
+    const admin = cookieOf(await loginAs(a, ADMIN, ADMIN_PW));
+    const teacher = cookieOf(await register(a, 'ucitel', 'Peter Učiteľ'));
+    expect((await call(a, 'PATCH', '/api/admin/users/ucitel', admin, { role: 'teacher' })).statusCode).toBe(200);
+    return { a, dataDir, admin, teacher };
+  };
+
+  test('UM1 administrator from the environment: both variables required, password length checked', () => {
+    expect(EnvAdmin.fromEnv({})).toBeNull();
+    expect(() => EnvAdmin.fromEnv({ CPUEMUL_ADMIN_USERNAME: 'admin' })).toThrow(/both/);
+    expect(() => EnvAdmin.fromEnv({ CPUEMUL_ADMIN_USERNAME: 'admin', CPUEMUL_ADMIN_PASSWORD: 'short' })).toThrow(/characters/);
+    expect(() => EnvAdmin.fromEnv({ CPUEMUL_ADMIN_USERNAME: 'a b', CPUEMUL_ADMIN_PASSWORD: 'long-enough' })).toThrow();
+    expect(EnvAdmin.fromEnv({ CPUEMUL_ADMIN_USERNAME: ' admin ', CPUEMUL_ADMIN_PASSWORD: 'long-enough' })!.username).toBe('admin');
+  });
+
+  test('UM2 admin logs in with the env password (any case of the name); the name cannot be registered', async () => {
+    const { app: a, dataDir } = await umApp();
+    expect((await loginAs(a, ADMIN, 'zle-heslo-1')).statusCode).toBe(401);
+    const res = await loginAs(a, 'SPRAVCA', ADMIN_PW);
+    expect(res.statusCode).toBe(200);
+    expect(res.json().user).toEqual({ username: ADMIN, displayName: 'Administrátor', role: 'admin' });
+    expect((await register(a, 'Spravca')).json()).toEqual({ error: 'username_taken' });
+    expect(existsSync(join(dataDir, 'accounts.json'))).toBe(false); // the admin is not stored
+  });
+
+  test('UM3 registration: name required, captcha required / single use, new account is a student', async () => {
+    const { app: a } = await umApp();
+    expect((await register(a, 'jana', '   ')).json()).toEqual({ error: 'invalid_name' });
+    const noCaptcha = await a.inject({ method: 'POST', url: '/api/auth/register', headers: CSRF, payload: { username: 'jana', password: 'heslo12345', name: 'Jana' } });
+    expect(noCaptcha.statusCode).toBe(400);
+    expect(noCaptcha.json()).toEqual({ error: 'captcha_failed' });
+    const solved = await solveCaptcha(a);
+    const forged = JSON.parse(Buffer.from(solved, 'base64').toString());
+    forged.number = (forged.number + 1) % 301;
+    const bad = await a.inject({ method: 'POST', url: '/api/auth/register', headers: CSRF, payload: { username: 'jana', password: 'heslo12345', name: 'Jana', captcha: Buffer.from(JSON.stringify(forged)).toString('base64') } });
+    expect(bad.json()).toEqual({ error: 'captcha_failed' });
+    const ok = await a.inject({ method: 'POST', url: '/api/auth/register', headers: CSRF, payload: { username: 'jana', password: 'heslo12345', name: '  Jana   Nová ', captcha: solved } });
+    expect(ok.statusCode).toBe(201);
+    expect(ok.json().user).toEqual({ username: 'jana', displayName: 'Jana Nová', role: 'student' });
+    const replay = await a.inject({ method: 'POST', url: '/api/auth/register', headers: CSRF, payload: { username: 'jana2', password: 'heslo12345', name: 'Jana', captcha: solved } });
+    expect(replay.json()).toEqual({ error: 'captcha_failed' });
+  });
+
+  test('UM4 captcha: expired solutions are refused; malformed payloads too', () => {
+    let t = 1_700_000_000_000;
+    const c = new Captcha(50, 60_000, () => t);
+    const ch = c.create();
+    let n = 0;
+    while (createHash('sha256').update(ch.salt + n).digest('hex') !== ch.challenge) n++;
+    const payload = Buffer.from(JSON.stringify({ ...ch, number: n })).toString('base64');
+    t += 61_000;
+    expect(c.verify(payload)).toBe(false);
+    expect(c.verify('not base64 json')).toBe(false);
+    expect(c.verify(undefined)).toBe(false);
+  });
+
+  test('UM5 students have no access to management', async () => {
+    const { app: a } = await umApp();
+    const student = cookieOf(await register(a, 'jozef'));
+    expect((await call(a, 'GET', '/api/admin/users', student)).statusCode).toBe(403);
+    expect((await call(a, 'DELETE', '/api/admin/users/jozef', student)).statusCode).toBe(403);
+    const page = await a.inject({ url: '/admin', headers: { cookie: student } });
+    expect(page.statusCode).toBe(302);
+    expect(page.headers.location).toBe('/');
+    expect((await a.inject({ url: '/admin' })).headers.location).toBe('/login');
+  });
+
+  test('UM6 role change by the admin applies to open sessions; teachers see and manage students only', async () => {
+    const { a, admin, teacher } = await setup();
+    expect((await sessionOf(a, teacher)).json().user.role).toBe('teacher');
+    expect((await a.inject({ url: '/admin', headers: { cookie: teacher } })).body).toBe('<html>admin</html>');
+    await register(a, 'ziak1');
+    await register(a, 'ucitel2', 'Druhý Učiteľ');
+    await call(a, 'PATCH', '/api/admin/users/ucitel2', admin, { role: 'teacher' });
+
+    const asTeacher = (await call(a, 'GET', '/api/admin/users', teacher)).json();
+    expect(asTeacher.actor).toBe('teacher');
+    expect(asTeacher.users.map((u: { username: string }) => u.username)).toEqual(['ziak1']);
+    const asAdmin = (await call(a, 'GET', '/api/admin/users', admin)).json();
+    expect(asAdmin.actor).toBe('admin');
+    expect(asAdmin.users.map((u: { username: string }) => u.username).sort()).toEqual(['ucitel', 'ucitel2', 'ziak1']);
+
+    expect((await call(a, 'PATCH', '/api/admin/users/ucitel2', teacher, { enabled: false })).statusCode).toBe(403);
+    expect((await call(a, 'PATCH', '/api/admin/users/ziak1', teacher, { role: 'teacher' })).statusCode).toBe(403);
+    expect((await call(a, 'POST', '/api/admin/users', teacher, { username: 'x-ucitel', name: 'X', password: 'heslo12345', role: 'teacher' })).statusCode).toBe(403);
+    expect((await call(a, 'PATCH', '/api/admin/users/ziak1', admin, { role: 'boss' })).json()).toEqual({ error: 'invalid_role' });
+    expect((await call(a, 'PATCH', '/api/admin/users/nikto', admin, { enabled: false })).statusCode).toBe(404);
+    expect((await call(a, 'PATCH', '/api/admin/users/' + ADMIN, admin, { enabled: false })).statusCode).toBe(404);
+
+    // demotion takes effect at once
+    await call(a, 'PATCH', '/api/admin/users/ucitel', admin, { role: 'student' });
+    expect((await call(a, 'GET', '/api/admin/users', teacher)).statusCode).toBe(403);
+  });
+
+  test('UM7 teacher creates, renames, sets a password, disables and re-enables a student', async () => {
+    const { a, teacher } = await setup();
+    const created = await call(a, 'POST', '/api/admin/users', teacher, { username: 'Mato', name: 'Martin Malý', password: 'prve-heslo' });
+    expect(created.statusCode).toBe(201);
+    expect(created.json().user).toMatchObject({ username: 'Mato', name: 'Martin Malý', role: 'student', enabled: true, online: false, lastLoginAt: null });
+    expect((await call(a, 'POST', '/api/admin/users', teacher, { username: 'mato', name: 'Iný', password: 'heslo12345' })).statusCode).toBe(409);
+    expect((await call(a, 'POST', '/api/admin/users', teacher, { username: 'kratke', name: 'K', password: 'kratke' })).json()).toEqual({ error: 'weak_password' });
+
+    const student = cookieOf(await loginAs(a, 'mato', 'prve-heslo'));
+    // rename: shown in the student's open session
+    expect((await call(a, 'PATCH', '/api/admin/users/mato', teacher, { name: 'Martin Veľký' })).json().user.name).toBe('Martin Veľký');
+    expect((await sessionOf(a, student)).json().user.displayName).toBe('Martin Veľký');
+    expect((await call(a, 'PATCH', '/api/admin/users/mato', teacher, { name: '' })).json()).toEqual({ error: 'invalid_name' });
+
+    // new password: the student is logged out, only the new password works
+    expect((await call(a, 'PUT', '/api/admin/users/mato/password', teacher, { password: 'kratke' })).statusCode).toBe(400);
+    expect((await call(a, 'PUT', '/api/admin/users/mato/password', teacher, { password: 'druhe-heslo' })).statusCode).toBe(204);
+    expect((await sessionOf(a, student)).statusCode).toBe(401);
+    expect((await loginAs(a, 'mato', 'prve-heslo')).statusCode).toBe(401);
+    const again = cookieOf(await loginAs(a, 'mato', 'druhe-heslo'));
+
+    // disable: logged out, login refused with a clear error (only after a correct password)
+    const off = await call(a, 'PATCH', '/api/admin/users/mato', teacher, { enabled: false });
+    expect(off.json().user).toMatchObject({ enabled: false, online: false });
+    expect((await sessionOf(a, again)).statusCode).toBe(401);
+    const refused = await loginAs(a, 'mato', 'druhe-heslo');
+    expect(refused.statusCode).toBe(403);
+    expect(refused.json()).toEqual({ error: 'account_disabled' });
+    expect((await loginAs(a, 'mato', 'zle-heslo-x')).json()).toEqual({ error: 'invalid_credentials' });
+    expect((await call(a, 'PATCH', '/api/admin/users/mato', teacher, { enabled: 'no' })).statusCode).toBe(400);
+    await call(a, 'PATCH', '/api/admin/users/mato', teacher, { enabled: true });
+    expect((await loginAs(a, 'mato', 'druhe-heslo')).statusCode).toBe(200);
+  });
+
+  test('UM8 list shows online state, last login and storage', async () => {
+    const { a, teacher } = await setup();
+    const student = cookieOf(await register(a, 'eva'));
+    await a.inject({ method: 'PUT', url: '/api/files/p.asm', payload: 'MVI A, 1', headers: { ...CSRF, cookie: student, 'content-type': 'text/plain' } });
+    await loginAs(a, 'eva', 'heslo12345');
+    const eva = (await call(a, 'GET', '/api/admin/users', teacher)).json().users[0];
+    expect(eva).toMatchObject({ username: 'eva', online: true, fileCount: 1, storageBytes: 8 });
+    expect(Date.parse(eva.lastLoginAt)).toBeGreaterThan(0);
+    expect(Date.parse(eva.lastActivityAt)).toBeGreaterThan(0);
+  });
+
+  test('UM9 delete removes the account, its files and its sessions', async () => {
+    const { a, dataDir, teacher } = await setup();
+    const student = cookieOf(await register(a, 'Fero'));
+    await a.inject({ method: 'PUT', url: '/api/files/p.asm', payload: 'X', headers: { ...CSRF, cookie: student, 'content-type': 'text/plain' } });
+    expect(existsSync(join(dataDir, 'users', userKey('Fero')))).toBe(true);
+    expect((await call(a, 'DELETE', '/api/admin/users/fero', teacher)).statusCode).toBe(204);
+    expect(existsSync(join(dataDir, 'users', userKey('Fero')))).toBe(false);
+    expect((await sessionOf(a, student)).statusCode).toBe(401);
+    expect((await loginAs(a, 'Fero', 'heslo12345')).statusCode).toBe(401);
+    expect((await call(a, 'DELETE', '/api/admin/users/fero', teacher)).statusCode).toBe(404);
+    // a new account with the same name starts with an empty workspace
+    const reborn = cookieOf(await register(a, 'fero'));
+    expect((await a.inject({ url: '/api/files', headers: { cookie: reborn } })).json()).toEqual([]);
+  });
+
+  test('UM10 CSV import: generated passwords, header / quotes / separators, bad rows reported', async () => {
+    const { a, teacher } = await setup();
+    await register(a, 'existuje');
+    const csv = '﻿Meno;Používateľské meno\r\n"Novák; Ján";jnovak\r\n\r\nAna Bella,abella\nBez mena;\nDvojka;jnovak\nX;existuje\nZlé meno;a b\n';
+    const res = await call(a, 'POST', '/api/admin/users/import', teacher, { csv });
+    expect(res.statusCode).toBe(200);
+    const { created, skipped } = res.json();
+    expect(created.map((c: { line: number; name: string; username: string }) => [c.line, c.name, c.username])).toEqual([
+      [2, 'Novák; Ján', 'jnovak'],
+      [4, 'Ana Bella', 'abella'],
+    ]);
+    expect(skipped.map((s: { line: number; error: string }) => [s.line, s.error])).toEqual([
+      [5, 'invalid_username'],
+      [6, 'username_taken'],
+      [7, 'username_taken'],
+      [8, 'invalid_username'],
+    ]);
+    for (const c of created) {
+      expect(c.password).toMatch(/^[a-zA-Z2-9]{10}$/);
+      const login = await loginAs(a, c.username, c.password);
+      expect(login.json().user).toEqual({ username: c.username, displayName: c.name, role: 'student' });
+    }
+    const tooMany = Array.from({ length: MAX_IMPORT_ROWS + 1 }, (_, i) => `S${i};s${i}xx`).join('\n');
+    expect((await call(a, 'POST', '/api/admin/users/import', teacher, { csv: tooMany })).json()).toEqual({ error: 'too_many_rows' });
+  });
+
+  test('UM11 CSV parsing details', () => {
+    expect(parseStudentCsv('name;username\nA;a1\n')).toEqual([{ line: 2, name: 'A', username: 'a1' }]);
+    expect(parseStudentCsv('Ján Kráľ;jkral')).toEqual([{ line: 1, name: 'Ján Kráľ', username: 'jkral' }]);
+    expect(parseStudentCsv('"Say ""hi""";u1')).toEqual([{ line: 1, name: 'Say "hi"', username: 'u1' }]);
+    expect(parseStudentCsv('A\tb1\n')).toEqual([{ line: 1, name: 'A', username: 'b1' }]);
+  });
+
+  test('UM12 accounts from older versions are enabled students; management is local-mode only', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'cpuemul-um-'));
+    await new LocalAccounts(dir).register('stary', 'heslo12345', 'Starý');
+    const file = join(dir, 'accounts.json');
+    const raw = JSON.parse(readFileSync(file, 'utf8'));
+    for (const acc of raw.accounts) {
+      delete acc.role;
+      delete acc.enabled;
+    }
+    writeFileSync(file, JSON.stringify({ version: 1, accounts: raw.accounts }));
+    const { app: a } = await umApp(dir);
+    expect((await loginAs(a, 'stary', 'heslo12345')).json().user.role).toBe('student');
+    const ldapApp = await app();
+    expect((await ldapApp.inject({ url: '/api/admin/users' })).statusCode).toBe(404);
   });
 });

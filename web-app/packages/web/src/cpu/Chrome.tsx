@@ -55,6 +55,9 @@ export function MenuBar() {
           <Item key="s" text="Uložiť" accel="Ctrl+S" icon="save" onClick={() => void ctl.saveCode(false)} close={close} />,
           <Item key="sa" text="Uložiť ako..." accel="Shift+Ctrl+S" icon="save-as" onClick={() => void ctl.saveCode(true)} close={close} />,
           <Item key="dl" text="Stiahnuť do počítača..." icon="save-as" onClick={() => ctl.downloadCode()} close={close} />,
+          ...(ctl.canManageUsers()
+            ? [<Divider key="du" />, <Item key="um" text="Správa používateľov..." onClick={() => ctl.openUserManagement()} close={close} />]
+            : []),
           <Divider key="d" />,
           <Item key="k" text="Koniec" icon="close-window" onClick={() => void ctl.exitMenu()} close={close} />,
         ]}

@@ -11,5 +11,10 @@ button:disabled { opacity: .5; cursor: default; }
 .hint { margin: -6px 0 0; color: #666; font-size: 12px; }
 .switch { margin: 4px 0 0; text-align: center; color: #555; }
 .switch a { color: #2a6ebb; }
+.captcha { border: 1px solid #ccc; border-radius: 3px; padding: 8px 10px; background: #fafafa; display: flex; flex-direction: column; gap: 2px; }
+.captcha-box { flex-direction: row; align-items: center; gap: 8px; cursor: pointer; }
+.captcha-box input { width: 16px; height: 16px; margin: 0; }
+.captcha-note { color: #888; font-size: 11px; margin-left: 24px; }
+.captcha.done { border-color: #2e7d32; }
 /* the `hidden` attribute must win over the display rules above (e.g. label { display: flex }) */
 [hidden] { display: none !important; }

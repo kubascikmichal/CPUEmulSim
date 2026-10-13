@@ -5,7 +5,7 @@ Example files for running the CPU Emulator web application on a Linux server. Th
 | File | Installed as | Purpose |
 |---|---|---|
 | `server.production.yaml` | `/etc/cpuemul/server.yaml` | Server configuration (local accounts; LDAP off until `ldap.urls` is filled in) |
-| `cpuemul.env.example` | `/etc/cpuemul/cpuemul.env` | Secrets: config path, LDAP service account password |
+| `cpuemul.env.example` | `/etc/cpuemul/cpuemul.env` | Secrets: config path, administrator name and password, LDAP service account password |
 | `ldap-allowed-emails.txt` | `/etc/cpuemul/ldap-allowed-emails.txt` | E-mail addresses allowed to log in through LDAP |
 | `cpuemul.service` | `/etc/systemd/system/cpuemul.service` | systemd service that runs the app |
 | `apache2-cpuemul.conf` | `/etc/apache2/sites-available/cpuemul.conf` | Apache 2: HTTPS + reverse proxy (or use nginx) |
@@ -50,7 +50,7 @@ sudo install -o root -g cpuemul -m 0640 ldap-allowed-emails.txt /etc/cpuemul/lda
 sudo install -o root -g root    -m 0600 cpuemul.env.example     /etc/cpuemul/cpuemul.env
 ```
 
-In `/etc/cpuemul/server.yaml`, check `port: 8080` and the paths. Fill in `LDAP_SERVICE_PASSWORD` in `/etc/cpuemul/cpuemul.env` only once you turn on LDAP.
+In `/etc/cpuemul/server.yaml`, check `port: 8080` and the paths. Set `CPUEMUL_ADMIN_USERNAME` and `CPUEMUL_ADMIN_PASSWORD` in `/etc/cpuemul/cpuemul.env` (the administrator assigns teacher roles; see [Users and roles](../../docs/deployment.md#users-and-roles)). Fill in `LDAP_SERVICE_PASSWORD` in `/etc/cpuemul/cpuemul.env` only once you turn on LDAP.
 
 ### 5. Create and start the service
 

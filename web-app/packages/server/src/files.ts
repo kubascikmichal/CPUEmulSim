@@ -4,7 +4,7 @@
  * UTF-8 bytes the client sent (identical to what the desktop application writes).
  */
 import { randomBytes } from 'node:crypto';
-import { mkdir, open, readdir, readFile, rename, stat, unlink } from 'node:fs/promises';
+import { mkdir, open, readdir, readFile, rename, rm, stat, unlink } from 'node:fs/promises';
 import { join, resolve, sep } from 'node:path';
 
 export class FileStoreError extends Error {
@@ -98,6 +98,20 @@ export class FileStore {
   async exists(username: string, name: string): Promise<boolean> {
     validateFileName(name);
     return (await this.resolveName(username, name)) !== null;
+  }
+
+  /** Number of files and bytes stored by the user. */
+  async usage(username: string): Promise<{ files: number; bytes: number }> {
+    const entries = await this.entries(username);
+    return { files: entries.length, bytes: entries.reduce((sum, e) => sum + e.size, 0) };
+  }
+
+  /** Deletes the user's whole workspace (`users/<userKey>/`). */
+  async removeUser(username: string): Promise<void> {
+    const root = resolve(this.dataDir, 'users');
+    const dir = resolve(root, userKey(username));
+    if (!dir.startsWith(root + sep)) throw new FileStoreError(400, 'invalid_user');
+    await rm(dir, { recursive: true, force: true });
   }
 
   async write(username: string, name: string, content: Buffer): Promise<void> {

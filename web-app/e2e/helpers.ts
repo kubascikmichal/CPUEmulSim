@@ -25,3 +25,10 @@ export async function setCode(page: Page, code: string) {
 export async function register(page: Page, name: string) {
   return page.getByTestId(`reg-${name}`).inputValue();
 }
+
+/** Registration form: tick "Nie som robot" and wait for the proof of work. */
+export async function solveCaptcha(page: Page) {
+  if (await page.locator('#captcha-row').isHidden()) return; // captcha disabled on this server
+  await page.locator('#captcha-check').check();
+  await expect(page.locator('#captcha-text')).toHaveText('Overené', { timeout: 30_000 });
+}

@@ -1123,6 +1123,7 @@ export class Wire {
     const coloured = new Set<Wire>();
     for (const wire of targets) for (const w of wire.collectChain()) coloured.add(w);
     for (const w of coloured) w.changeColor(color);
+    sheet.setChanged(); // Java: sheet.markChanged() - the scheme counts as modified
   }
 
   /** Chain between anchors: crosses invisible bends (exactly two wires). */
